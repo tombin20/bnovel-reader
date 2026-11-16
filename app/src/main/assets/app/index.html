@@ -9,12 +9,14 @@
 <body>
 <div id="app">
   <div id="main">
-    <header id="top"><b id="ttl">B-novel</b></header>
+    <header id="top"><b id="ttl">B-novel</b><button id="syncb" hidden aria-label="Đồng bộ">⟳</button></header>
     <div id="view"></div>
+    <div id="mini" hidden><div class="mt"><b id="mt1"></b><small id="mt2"></small></div><button id="mpl">⏸</button><button id="mx">✕</button></div>
     <nav id="tabs">
-      <button data-tab="home">🏠<span>Khám phá</span></button>
-      <button data-tab="genre">🏷<span>Thể loại</span></button>
       <button data-tab="lib">📚<span>Tủ sách</span></button>
+      <button data-tab="home">🔎<span>Khám phá</span></button>
+      <button data-tab="genre">🏷<span>Thể loại</span></button>
+      <button data-tab="stat">📊<span>Thống kê</span></button>
       <button data-tab="set">⚙<span>Cài đặt</span></button>
     </nav>
   </div>

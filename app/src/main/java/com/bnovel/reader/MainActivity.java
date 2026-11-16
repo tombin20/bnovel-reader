@@ -23,6 +23,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -45,7 +47,9 @@ public class MainActivity extends Activity {
     private boolean ttsReady = false;
     private int ttsGen = -1, ttsLast = -1;
     private String pendingVoice = null;
-    private String ttsTitle = "B-novel";
+    private String ttsTitle = "B-novel", ttsChapter = "", ttsCover = "";
+    private boolean ttsActive = false;
+    private File imgDir;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,8 +59,12 @@ public class MainActivity extends Activity {
         setContentView(web);
         initTts();
 
+        imgDir = new File(getFilesDir(), "imgs");
+        imgDir.mkdirs();
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this)).build();
+            .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler("/imgcache/", new WebViewAssetLoader.InternalStoragePathHandler(this, imgDir))
+            .build();
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -90,25 +98,71 @@ public class MainActivity extends Activity {
     // ================= HTTP (gọi API B-novel, tránh CORS) =================
     private class Http {
         @JavascriptInterface
-        public void get(int id, String url) {
+        public void request(int id, String method, String url, String body, String token) {
             pool.execute(() -> {
-                int status = 0; String body = "";
+                int status = 0; String out = "";
                 try {
                     if (!url.startsWith("https://")) throw new Exception("URL không hợp lệ");
                     HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
                     c.setConnectTimeout(15000);
                     c.setReadTimeout(30000);
+                    c.setRequestMethod(method);
                     c.setRequestProperty("Accept", "application/json");
+                    if (token != null && !token.isEmpty()) c.setRequestProperty("Cookie", "user=" + token);
+                    if (body != null && !body.isEmpty()) {
+                        c.setDoOutput(true);
+                        c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                        c.getOutputStream().write(body.getBytes("UTF-8"));
+                    }
                     status = c.getResponseCode();
                     InputStream is = status >= 400 ? c.getErrorStream() : c.getInputStream();
                     if (is != null) {
                         ByteArrayOutputStream bo = new ByteArrayOutputStream();
                         byte[] buf = new byte[16384]; int n;
                         while ((n = is.read(buf)) > 0) bo.write(buf, 0, n);
-                        body = bo.toString("UTF-8");
+                        out = bo.toString("UTF-8");
                     }
-                } catch (Exception e) { status = 0; body = ""; }
-                js("window.__http(" + id + "," + status + "," + JSONObject.quote(body) + ")");
+                } catch (Exception e) { status = 0; out = ""; }
+                js("window.__http(" + id + "," + status + "," + JSONObject.quote(out) + ")");
+            });
+        }
+
+        // Tải ảnh về bộ nhớ máy (đọc offline); file phục vụ qua https://appassets.androidplatform.net/imgcache/<tên>
+        @JavascriptInterface
+        public void cacheImage(int id, String url, String name) {
+            pool.execute(() -> {
+                boolean ok = false;
+                try {
+                    if (!url.startsWith("https://") || name.contains("/") || name.contains("..")) throw new Exception("bad");
+                    File dst = new File(imgDir, name);
+                    if (dst.exists() && dst.length() > 0) ok = true;
+                    else {
+                        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+                        c.setConnectTimeout(15000); c.setReadTimeout(30000);
+                        if (c.getResponseCode() == 200) {
+                            File tmp = new File(imgDir, name + ".tmp");
+                            try (InputStream is = c.getInputStream(); FileOutputStream fo = new FileOutputStream(tmp)) {
+                                byte[] buf = new byte[16384]; int n;
+                                while ((n = is.read(buf)) > 0) fo.write(buf, 0, n);
+                            }
+                            ok = tmp.renameTo(dst);
+                        }
+                    }
+                } catch (Exception ignored) {}
+                js("window.__img(" + id + "," + ok + ")");
+            });
+        }
+
+        @JavascriptInterface
+        public void deleteImages(String json) {
+            pool.execute(() -> {
+                try {
+                    JSONArray a = new JSONArray(json);
+                    for (int i = 0; i < a.length(); i++) {
+                        String n = a.getString(i);
+                        if (!n.contains("/") && !n.contains("..")) new File(imgDir, n).delete();
+                    }
+                } catch (Exception ignored) {}
             });
         }
     }
@@ -155,17 +209,20 @@ public class MainActivity extends Activity {
     }
 
     private void svc(boolean playing) {
-        Intent i = new Intent(this, TtsService.class).putExtra("playing", playing).putExtra("title", ttsTitle);
-        startForegroundService(i);
+        ttsActive = true;
+        if (TtsService.instance != null) TtsService.instance.apply(ttsTitle, ttsChapter, ttsCover, playing);
+        else startForegroundService(new Intent(this, TtsService.class)
+            .putExtra("playing", playing).putExtra("title", ttsTitle).putExtra("chapter", ttsChapter).putExtra("cover", ttsCover));
     }
 
     void ttsStopFromService() {
+        ttsActive = false;
         if (tts != null) tts.stop();
         js("window.__ttsNative&&window.__ttsNative.onExternalStop()");
     }
 
-    void ttsToggleFromService() {
-        js("window.__ttsNative&&window.__ttsNative.onToggle()");
+    void ttsCmd(String c) {
+        js("window.__ttsNative&&window.__ttsNative.onCmd('" + c + "')");
     }
 
     private class TtsBridge {
@@ -206,12 +263,14 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void speak(String json, int from, float rate, int gen, String title) {
+        public void speak(String json, int from, float rate, int gen, String title, String chapter, String cover) {
             runOnUiThread(() -> {
                 try {
                     if (!ttsReady) { js("window.__ttsNative&&window.__ttsNative.onError(" + gen + ",'nolang')"); return; }
                     JSONArray arr = new JSONArray(json);
                     ttsTitle = title == null || title.isEmpty() ? "B-novel" : title;
+                    ttsChapter = chapter == null ? "" : chapter;
+                    ttsCover = cover == null ? "" : cover;
                     tts.stop();
                     tts.setSpeechRate(rate);
                     ttsGen = gen;
@@ -237,6 +296,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void stop() {
             runOnUiThread(() -> {
+                ttsActive = false;
                 if (tts != null) tts.stop();
                 ttsGen = -1;
                 stopService(new Intent(MainActivity.this, TtsService.class));
@@ -264,7 +324,9 @@ public class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         web.evaluateJavascript("window.__back?window.__back():false", v -> {
-            if (!"true".equals(v)) { MainActivity.super.onBackPressed(); }
+            if ("true".equals(v)) return;
+            if (ttsActive) moveTaskToBack(true);   // đang nghe: thu app xuống nền, vẫn đọc + có thông báo
+            else MainActivity.super.onBackPressed();
         });
     }
 

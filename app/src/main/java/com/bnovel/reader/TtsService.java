@@ -35,12 +35,15 @@ public class TtsService extends Service {
     private MediaSession session;
     private Bitmap art;
     private String artUrl = "", title = "B-novel", chapter = "";
-    private boolean playing = true, fg = false;
+    private boolean playing = true, fg = false, dead = false;
 
     @Override public void onCreate() { super.onCreate(); instance = this; }
 
     @Override
     public int onStartCommand(Intent i, int flags, int startId) {
+        // startForegroundService() bắt buộc phải gọi startForeground() ngay, nếu không app bị văng
+        if (dead) return START_NOT_STICKY;
+        if (!fg) { try { startFgMinimal(); } catch (Exception ignored) {} }
         String act = i == null ? null : i.getAction();
         if (ACTION_STOP.equals(act)) {
             MainActivity a = MainActivity.instance;
@@ -56,9 +59,20 @@ public class TtsService extends Service {
         return START_NOT_STICKY;
     }
 
+    private void startFgMinimal() {
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Sách nói", NotificationManager.IMPORTANCE_LOW));
+        Notification n = new Notification.Builder(this, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(title).setContentText(chapter).build();
+        startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+        fg = true;
+    }
+
     private void cmd(String c) { MainActivity a = MainActivity.instance; if (a != null) a.ttsCmd(c); }
 
     void apply(String t, String c, String cover, boolean p) {
+        if (dead) return;
         if (t != null && !t.isEmpty()) title = t;
         if (c != null) chapter = c;
         playing = p;
@@ -150,6 +164,10 @@ public class TtsService extends Service {
     private void releaseLock() { if (wakeLock != null && wakeLock.isHeld()) wakeLock.release(); wakeLock = null; }
 
     void shutdown() {
+        if (dead) return;
+        if (!fg) { try { startFgMinimal(); } catch (Exception ignored) {} }
+        dead = true;
+        if (instance == this) instance = null;
         releaseLock();
         if (session != null) { session.setActive(false); session.release(); session = null; }
         stopForeground(true); fg = false;

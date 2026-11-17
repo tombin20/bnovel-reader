@@ -2,6 +2,7 @@ package com.bnovel.reader;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -11,6 +12,8 @@ import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
 import android.webkit.JavascriptInterface;
+import android.webkit.JsResult;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -81,6 +84,31 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 if ("appassets.androidplatform.net".equals(r.getUrl().getHost())) return false;
                 try { startActivity(new Intent(Intent.ACTION_VIEW, r.getUrl())); } catch (Exception ignored) {}
+                return true;
+            }
+        });
+
+        // WebView mặc định KHÔNG hiện confirm()/alert() và luôn trả về false -> nút xóa bị hủy ngầm.
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onJsConfirm(WebView v, String url, String message, final JsResult r) {
+                if (isFinishing()) { r.cancel(); return true; }
+                new AlertDialog.Builder(MainActivity.this)
+                    .setMessage(message)
+                    .setPositiveButton("Đồng ý", (d, w) -> r.confirm())
+                    .setNegativeButton("Hủy", (d, w) -> r.cancel())
+                    .setOnCancelListener(d -> r.cancel())
+                    .show();
+                return true;
+            }
+            @Override
+            public boolean onJsAlert(WebView v, String url, String message, final JsResult r) {
+                if (isFinishing()) { r.confirm(); return true; }
+                new AlertDialog.Builder(MainActivity.this)
+                    .setMessage(message)
+                    .setPositiveButton("OK", (d, w) -> r.confirm())
+                    .setOnCancelListener(d -> r.confirm())
+                    .show();
                 return true;
             }
         });
@@ -209,10 +237,23 @@ public class MainActivity extends Activity {
     }
 
     private void svc(boolean playing) {
+        // pause() từ JS cũng được gọi khi rời trang đọc dù chưa nghe -> không được bật service mới
+        if (!playing && !ttsActive && TtsService.instance == null) return;
         ttsActive = true;
-        if (TtsService.instance != null) TtsService.instance.apply(ttsTitle, ttsChapter, ttsCover, playing);
-        else startForegroundService(new Intent(this, TtsService.class)
-            .putExtra("playing", playing).putExtra("title", ttsTitle).putExtra("chapter", ttsChapter).putExtra("cover", ttsCover));
+        try {
+            if (TtsService.instance != null) TtsService.instance.apply(ttsTitle, ttsChapter, ttsCover, playing);
+            else startForegroundService(new Intent(this, TtsService.class)
+                .putExtra("playing", playing).putExtra("title", ttsTitle).putExtra("chapter", ttsChapter).putExtra("cover", ttsCover));
+        } catch (Exception ignored) {}
+    }
+
+    // Dừng service an toàn: không gọi stopService ngay sau startForegroundService (gây crash)
+    private void stopSvc() {
+        try {
+            if (TtsService.instance != null) TtsService.instance.shutdown();
+            else if (ttsActive) startForegroundService(new Intent(this, TtsService.class).setAction(TtsService.ACTION_STOP));
+        } catch (Exception ignored) {}
+        ttsActive = false;
     }
 
     void ttsStopFromService() {
@@ -296,10 +337,9 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void stop() {
             runOnUiThread(() -> {
-                ttsActive = false;
                 if (tts != null) tts.stop();
                 ttsGen = -1;
-                stopService(new Intent(MainActivity.this, TtsService.class));
+                stopSvc();
             });
         }
 
@@ -325,6 +365,7 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         web.evaluateJavascript("window.__back?window.__back():false", v -> {
             if ("true".equals(v)) return;
+            if (isFinishing() || isDestroyed()) return;
             if (ttsActive) moveTaskToBack(true);   // đang nghe: thu app xuống nền, vẫn đọc + có thông báo
             else MainActivity.super.onBackPressed();
         });
@@ -333,7 +374,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (tts != null) { tts.stop(); tts.shutdown(); }
-        stopService(new Intent(this, TtsService.class));
+        if (TtsService.instance != null) { try { TtsService.instance.shutdown(); } catch (Exception ignored) {} }
         if (instance == this) instance = null;
         super.onDestroy();
     }

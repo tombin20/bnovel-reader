@@ -193,11 +193,16 @@ function openSheet(html) {
 }
 function closeSheet() { if (sheetEl) { sheetEl.remove(); sheetEl = null; } }
 window.__back = () => {
-  if (sheetEl) { closeSheet(); return true; }
-  const t = stack[stack.length - 1];
-  if (t) { if (t._leave) t._leave(); else pop(); return true; }
-  if (tab !== "lib") { go("lib"); return true; }
-  return false;
+  try {
+    if (sheetEl) { closeSheet(); return true; }
+    const t = stack[stack.length - 1];
+    if (t) { if (t._leave) t._leave(); else pop(); return true; }
+    if (tab !== "lib") { go("lib"); return true; }
+    return false;
+  } catch (e) { // lỗi JS không được làm thoát app: gỡ màn hình trên cùng rồi coi như đã xử lý
+    const el = stack.pop(); if (el) { try { el.remove(); } catch {} try { updateMini(); } catch {} return true; }
+    return false;
+  }
 };
 
 // mini player (khi thoát trang đọc mà sách nói vẫn chạy)
@@ -682,7 +687,7 @@ function openReader(story, toc, startIdx, startP) {
     T.pause = () => { flush(); since = 0; T.playing = false; gen++; if (native) native.pause(); else if (web) web.cancel(); T.ui(); };
     T.halt = silent => { flush(); since = 0; T.playing = false; gen++; chunks = []; if (!silent) { if (native) native.pause(); else if (web) web.cancel(); } hi(-1); hl = -2; };
     T.stopAll = () => {
-      T.halt(); if (native) native.stop(); clearTimeout(sleepT); sleepT = null; clearInterval(flushT); ss.value = "0"; ttsEl.hidden = true; T.ui();
+      T.halt(true); if (native) native.stop(); else if (web) web.cancel(); clearTimeout(sleepT); sleepT = null; clearInterval(flushT); ss.value = "0"; ttsEl.hidden = true; T.ui();
     };
     T.finished = async () => {
       hi(-1); hl = -2; flush();

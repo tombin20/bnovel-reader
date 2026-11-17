@@ -12,6 +12,7 @@ const h = html => { const d = document.createElement("div"); d.innerHTML = html.
 const BASE0 = "https://bnovel.tombin2k.workers.dev";
 const THEMES = [["dark", "#17191d"], ["black", "#000"], ["sepia", "#f1eadb"], ["light", "#fff"], ["march7", "linear-gradient(135deg,#f6a6cb,#a9cdf3)"]];
 const native = window.AndroidTTS || null;
+const APP_VER = native && window.AndroidApp ? (window.AndroidApp.versionName() || "") : "";
 
 let cfg = Object.assign({ base: BASE0, theme: "dark", size: 19, font: "serif", lh: 1.8, mode: "scroll", rate: 1, voice: "" }, ls.get("cfg", {}));
 const saveCfg = () => ls.set("cfg", cfg);
@@ -111,6 +112,7 @@ async function getChapter(sid, pos) {
   const k = sid + ":" + pos;
   if (memo[k]) return memo[k];
   try { const c = await chGet(k); if (c) return c; } catch {}
+  if (window.AndroidDl) { try { const t = window.AndroidDl.readChapter(+sid, +pos); if (t) return JSON.parse(t); } catch {} }
   const c = (await api(`/api/chapter?story=${sid}&pos=${pos}`)).chapter;
   memo[k] = c; return c;
 }
@@ -274,6 +276,7 @@ function renderLib() {
 }
 async function deleteDl(id) {
   const d = dl[id]; if (!d) return;
+  if (window.AndroidDl) { try { window.AndroidDl.remove(+id); } catch {} delete jobs[id]; }
   for (const p of d.have) { try { await chDel(id + ":" + p); } catch {} }
   const keep = new Set(); Object.values(dl).forEach(x => { if (x !== d) (x.imgs || []).forEach(n => keep.add(n)); });
   const del = (d.imgs || []).filter(n => !keep.has(n));
@@ -355,7 +358,9 @@ function renderSettings() {
     <h4>Dữ liệu</h4>
     <div class="r"><button class="btn danger" id="clr">Xóa toàn bộ truyện đã tải</button></div>
     <div class="r"><button class="btn danger" id="clrst">Xóa thống kê</button></div>
-    <p class="empty">B-novel Reader 2.0</p></div>`;
+    <h4>Ứng dụng</h4>
+    <div class="r"><label>Phiên bản: <b>${esc(APP_VER || "web")}</b></label>${native ? `<button class="btn" id="chkupd">Kiểm tra cập nhật</button>` : ""}</div>
+    <p class="empty">B-novel Reader</p></div>`;
   $("#fn").value = cfg.font; $("#rt").value = String(cfg.rate); $("#md").value = cfg.mode;
   $$("[data-th]", view).forEach(b => b.onclick = () => { cfg.theme = b.dataset.th; saveCfg(); applyTheme(); renderSettings(); });
   $("#sz").oninput = e => { cfg.size = +e.target.value; $("#sv").textContent = cfg.size; saveCfg(); applyTheme(); };
@@ -365,6 +370,7 @@ function renderSettings() {
   $("#rt").onchange = e => { cfg.rate = +e.target.value; saveCfg(); };
   if ($("#ttsset")) $("#ttsset").onclick = () => AndroidTTS.openSettings();
   if ($("#syncnow")) $("#syncnow").onclick = () => sync(true);
+  if ($("#chkupd")) $("#chkupd").onclick = () => checkUpdate(true);
   if ($("#unlink")) $("#unlink").onclick = () => { if (!confirm("Hủy liên kết tài khoản? Dữ liệu trên máy vẫn được giữ.")) return; acct = null; ls.set("acct", null); renderSettings(); };
   if ($("#linkgo")) $("#linkgo").onclick = async () => {
     const code = $("#lc").value.trim(); if (!code) return;
@@ -381,6 +387,32 @@ function renderSettings() {
 
 // ---------- Chi tiết truyện ----------
 const jobs = {};
+const nativeDl = native && window.AndroidDl ? window.AndroidDl : null;
+const dlRedraw = {};   // id -> hàm vẽ lại trang truyện đang mở
+// Gộp tiến độ do service tải nền ghi (file trên máy) vào dl[id]
+function dlMerge(id) {
+  if (!nativeDl) return null;
+  let s; try { s = JSON.parse(nativeDl.snapshot(+id)); } catch { return null; }
+  const d = dl[id];
+  if (d && s) {
+    const have = new Set(d.have); (s.have || []).forEach(p => have.add(p)); d.have = [...have];
+    const im = new Set(d.imgs || []); (s.imgs || []).forEach(n => { im.add(n); imgHave.add(n); }); d.imgs = [...im];
+    ls.set("dl", dl); saveImgs();
+  }
+  return s;
+}
+window.__dl = id => {
+  const s = dlMerge(id); if (!s) return;
+  if (s.state === "run" || s.state === "queued") jobs[id] = Object.assign(jobs[id] || { native: true }, { done: s.done, total: s.total });
+  else if (jobs[id] && jobs[id].native) {
+    delete jobs[id];
+    if (s.state === "done") toast(s.failed ? `Tải xong, ${s.failed} chương lỗi (bấm tải lại để thử lại)` : "Đã tải xong (chữ + ảnh)");
+    else if (s.state === "cancel") toast("Đã dừng tải");
+    else if (s.state === "error") toast("Tải bị gián đoạn, thử lại sau");
+    if (tab === "lib" && !stack.length) renderLib();
+  }
+  if (dlRedraw[id]) dlRedraw[id]();
+};
 async function openStory(id) {
   const el = push(h(`<div><div class="bar"><button class="bk">←</button><b>Truyện</b></div><div class="body"><p class="load">Đang tải...</p></div></div>`));
   $(".bk", el).onclick = pop;
@@ -389,6 +421,7 @@ async function openStory(id) {
   try { [s, toc] = await Promise.all([api("/api/story?id=" + id).then(r => r.story), getToc(id)]); }
   catch (e) { if (dl[id]) { s = dl[id].story; toc = dl[id].chapters; } else { body.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; } }
   let desc = true, asc = true;
+  if (nativeDl) { const sn = dlMerge(id); if (sn && (sn.state === "run" || sn.state === "queued")) jobs[id] = { native: true, done: sn.done, total: sn.total }; }
   const draw = () => {
     const d = dl[id], have = new Set(d ? d.have : []), hs = hist[id], isFav = fav.some(f => f.id === id), job = jobs[id];
     const list = asc ? toc : [...toc].reverse();
@@ -398,7 +431,7 @@ async function openStory(id) {
       ${s.series ? `<p>Series: ${esc(s.series)}</p>` : ""}<p>${esc(s.status || "")} · ${toc.length} chương</p></div></div>
       <div class="acts"><button class="btn solid" id="read">${hs ? "▶ Đọc tiếp" : "▶ Đọc"}</button>
       <button class="btn" id="fv">${isFav ? "♥ Đang theo dõi" : "♡ Theo dõi"}</button>
-      <button class="btn" id="dlb">${job ? "⏹ Đang tải " + (d ? d.have.length : 0) + "/" + toc.length : d && d.have.length >= toc.length ? "✓ Đã tải" : "⬇ Tải xuống"}</button>
+      <button class="btn" id="dlb">${job ? "⏹ Đang tải " + (job.native ? job.done + "/" + job.total : (d ? d.have.length : 0) + "/" + toc.length) : d && d.have.length >= toc.length ? "✓ Đã tải" : "⬇ Tải xuống"}</button>
       ${s.series ? `<button class="btn" id="ser">Cùng series</button>` : ""}</div>
       <div class="chips" style="margin-bottom:10px">${(s.genres || []).map(g => `<button class="chip" data-g="${esc(g)}">${esc(g)}</button>`).join("")}</div>
       <div class="desc ${desc ? "cl" : ""}" id="ds">${esc(s.description || "")}</div>
@@ -417,13 +450,15 @@ async function openStory(id) {
     $$(".chip", body).forEach(b => b.onclick = () => openList(b.dataset.g, "/api/stories?genre=" + encodeURIComponent(b.dataset.g)));
     $$(".ch", body).forEach(c => c.onclick = () => { const i = toc.findIndex(x => x.position === +c.dataset.pos); openReader(s, toc, i, 0); });
   };
-  el.onclose = () => { if (tab === "lib") renderLib(); };
+  el.onclose = () => { if (dlRedraw[id] === draw) delete dlRedraw[id]; if (tab === "lib") renderLib(); };
+  dlRedraw[id] = draw;
   draw();
 }
 // Tải offline: toàn bộ chữ + ảnh (ảnh lưu vào bộ nhớ máy)
 async function startDownload(s, toc, redraw) {
   const id = s.id;
-  if (jobs[id]) { jobs[id].cancel = true; return; }
+  if (jobs[id]) { if (jobs[id].native) nativeDl.cancel(+id); else jobs[id].cancel = true; return; }
+  if (nativeDl) return startNativeDl(s, toc, redraw);
   const d = dl[id] || (dl[id] = { story: { id, title: s.title, cover: s.cover, description: s.description, authors: s.authors, illustrators: s.illustrators, genres: s.genres, status: s.status, series: s.series }, chapters: [], have: [], imgs: [] });
   d.chapters = toc.map(c => ({ position: c.position, title: c.title })); d.imgs = d.imgs || [];
   const todo = toc.filter(c => !d.have.includes(c.position));
@@ -445,6 +480,49 @@ async function startDownload(s, toc, redraw) {
   await Promise.all([worker(), worker(), worker()]);
   ls.set("dl", dl); saveImgs(); delete jobs[id]; redraw();
   toast(failed > 5 ? "Tải bị gián đoạn, thử lại sau" : job.cancel ? "Đã dừng tải" : "Đã tải xong (chữ + ảnh)");
+}
+// Chọn khoảng chương cần tải (theo số thứ tự trong danh sách chương)
+function askRange(toc, have) {
+  return new Promise(res => {
+    const idxs = toc.map((c, i) => i).filter(i => !have.has(toc[i].position));
+    const sh = openSheet(`<h3>Tải xuống</h3>
+      <p class="muted">Truyện có ${toc.length} chương, còn ${idxs.length} chương chưa tải. Chọn khoảng chương cần tải:</p>
+      <div class="stp"><label>Từ chương số</label><input id="dlf" type="number" inputmode="numeric" min="1" max="${toc.length}" value="${idxs[0] + 1}" style="width:96px"></div>
+      <div class="stp"><label>Đến chương số</label><input id="dlt" type="number" inputmode="numeric" min="1" max="${toc.length}" value="${idxs[idxs.length - 1] + 1}" style="width:96px"></div>
+      <p class="muted" id="dli"></p>
+      <div style="display:flex;gap:10px;margin-top:14px"><button class="btn solid" id="dlgo" style="flex:1">⬇ Tải khoảng này</button><button class="btn" id="dlall" style="flex:1">Tất cả chưa tải</button></div>`);
+    const f = $("#dlf", sh), t = $("#dlt", sh), info = $("#dli", sh);
+    const val = () => {
+      let a = Math.round(+f.value), b = Math.round(+t.value);
+      if (!(a >= 1 && b >= 1)) return null;
+      a = Math.min(a, toc.length); b = Math.min(b, toc.length);
+      return a <= b ? [a, b] : [b, a];
+    };
+    const upd = () => { const r = val(); info.textContent = r ? `Từ “${toc[r[0] - 1].title}” đến “${toc[r[1] - 1].title}”` : ""; };
+    f.oninput = t.oninput = upd; upd();
+    $("#dlgo", sh).onclick = () => { const r = val(); if (!r) { toast("Nhập số chương hợp lệ"); return; } closeSheet(); res(r); };
+    $("#dlall", sh).onclick = () => { closeSheet(); res([1, toc.length]); };
+  });
+}
+// Tải nền bằng service Android: tắt app / khóa máy vẫn tải tiếp, có thông báo tiến độ
+async function startNativeDl(s, toc, redraw) {
+  const id = s.id;
+  dlMerge(id);
+  const have = new Set(dl[id] ? dl[id].have : []);
+  if (toc.every(c => have.has(c.position))) { toast("Đã tải đủ rồi"); return; }
+  const r = await askRange(toc, have);
+  const pos = toc.slice(r[0] - 1, r[1]).filter(c => !have.has(c.position)).map(c => c.position);
+  if (!pos.length) { toast("Các chương này đã tải rồi"); return; }
+  const d = dl[id] || (dl[id] = { story: { id, title: s.title, cover: s.cover, description: s.description, authors: s.authors, illustrators: s.illustrators, genres: s.genres, status: s.status, series: s.series }, chapters: [], have: [], imgs: [] });
+  d.chapters = toc.map(c => ({ position: c.position, title: c.title })); d.imgs = d.imgs || [];
+  ls.set("dl", dl);
+  try { native.requestNotificationPermission(); } catch {}
+  let ok = false;
+  try { ok = nativeDl.start(JSON.stringify({ id, base: cfg.base, title: s.title, cover: s.cover || "", pos })); } catch {}
+  if (!ok) { toast("Không bắt đầu được tiến trình tải"); if (!d.have.length) { delete dl[id]; ls.set("dl", dl); } return; }
+  jobs[id] = { native: true, done: 0, total: pos.length };
+  dlRedraw[id] = redraw; redraw();
+  toast("Đang tải nền: có thể thoát app, tiến độ hiện ở thanh thông báo");
 }
 async function resume(id) {
   const hs = hist[id]; if (!hs) return openStory(id);
@@ -795,15 +873,44 @@ function openReader(story, toc, startIdx, startP) {
     else pop();
   };
   $(".bk", el).onclick = el._leave;
+  const onVis = () => { if (document.hidden && curCh) saveHist(); };   // lưu vị trí khi app xuống nền
+  document.addEventListener("visibilitychange", onVis);
   el.onclose = () => {
+    ls.set("last", null); document.removeEventListener("visibilitychange", onVis);
     tts.stopAll(); clearInterval(readT); clearTimeout(saveT); window.removeEventListener("resize", onResize);
     if (curCh) saveHist(); delete window.__ttsNative; updateMini();
     if (tab === "lib" && !stack.length) renderLib();
   };
+  ls.set("last", { id: story.id });
   load(idx, startP).then(() => { if (!startP) toast(isPage() ? "Chạm mép trái/phải hoặc vuốt để lật trang · chạm giữa để mở menu" : "Chạm vào giữa màn hình để hiện/ẩn menu"); });
 }
 
+// ---------- Cập nhật app (GitHub Releases) ----------
+const REPO = "tombin20/bnovel-reader";
+const verNum = v => String(v || "").replace(/^[^\d]*/, "").split(".").map(x => parseInt(x, 10) || 0);
+const isNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; } return false; };
+const rawGet = url => new Promise((ok, err) => { const id = ++hid; pend[id] = { ok, err }; AndroidHttp.request(id, "GET", url, "", ""); });
+async function checkUpdate(manual) {
+  if (!native || !window.AndroidApp || !APP_VER) { if (manual) toast("Chỉ dùng được trong app Android"); return; }
+  try {
+    const r = await rawGet(`https://api.github.com/repos/${REPO}/releases/latest`);
+    ls.set("updT", Date.now());
+    const tag = r.tag_name || "", apk = (r.assets || []).find(a => /\.apk$/i.test(a.name));
+    if (!tag || !apk || !isNewer(tag, APP_VER)) { if (manual) toast("Bạn đang dùng bản mới nhất (" + APP_VER + ")"); return; }
+    if (!manual && ls.get("updSkip", "") === tag) return;
+    if (confirm(`Có bản mới ${tag} (đang dùng ${APP_VER}).\nTải về bây giờ?`)) window.AndroidApp.openUrl(apk.browser_download_url);
+    else ls.set("updSkip", tag);
+  } catch (e) { if (manual) toast("Không kiểm tra được: " + e.message); }
+}
+
 // ---------- Khởi động ----------
+if (nativeDl) Object.keys(dl).forEach(id => { const sn = dlMerge(id); if (sn && (sn.state === "run" || sn.state === "queued")) jobs[id] = { native: true, done: sn.done, total: sn.total }; });
 go("lib");
 if (acct) sync(false);
+// Tắt hẳn app khi đang đọc -> mở lại tự vào đúng truyện, chương, trang lần trước
+{
+  const last = ls.get("last", null);
+  if (last && last.id && hist[last.id]) { ls.set("last", null); resume(last.id); }   // xóa trước để nếu lỗi không bị lặp mãi
+}
+if (native && Date.now() - ls.get("updT", 0) > 6 * 3600 * 1000) setTimeout(() => checkUpdate(false), 4000);
 })();

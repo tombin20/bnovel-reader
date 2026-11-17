@@ -115,6 +115,8 @@ public class MainActivity extends Activity {
 
         web.addJavascriptInterface(new Http(), "AndroidHttp");
         web.addJavascriptInterface(new TtsBridge(), "AndroidTTS");
+        web.addJavascriptInterface(new AppBridge(), "AndroidApp");
+        web.addJavascriptInterface(new DlBridge(), "AndroidDl");
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState); else web.loadUrl(HOME);
     }
@@ -193,6 +195,48 @@ public class MainActivity extends Activity {
                 } catch (Exception ignored) {}
             });
         }
+    }
+
+    // ================= Phiên bản + cập nhật =================
+    private class AppBridge {
+        @JavascriptInterface
+        public String versionName() {
+            try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
+            catch (Exception e) { return ""; }
+        }
+
+        @JavascriptInterface
+        public void openUrl(final String url) {
+            if (url == null || !url.startsWith("https://")) return;
+            runOnUiThread(() -> {
+                try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) {}
+            });
+        }
+    }
+
+    // ================= Tải truyện chạy nền =================
+    void dlEvent(int id) { js("window.__dl&&window.__dl(" + id + ")"); }
+
+    private class DlBridge {
+        @JavascriptInterface
+        public boolean start(String json) {
+            try {
+                JSONObject o = new JSONObject(json);
+                JSONArray a = o.getJSONArray("pos");
+                int[] pos = new int[a.length()];
+                for (int i = 0; i < pos.length; i++) pos[i] = a.getInt(i);
+                String base = o.getString("base");
+                if (!base.startsWith("https://") || pos.length == 0) return false;
+                DownloadService.Job j = new DownloadService.Job(o.getInt("id"), o.optString("title", "B-novel"), base, o.optString("cover", ""), pos);
+                return DownloadService.enqueue(MainActivity.this, j);
+            } catch (Exception e) { return false; }
+        }
+
+        @JavascriptInterface public void cancel(int id) { DownloadService.cancel(id); }
+        @JavascriptInterface public boolean isRunning(int id) { return DownloadService.isRunning(id); }
+        @JavascriptInterface public String snapshot(int id) { return DownloadService.snapshot(getFilesDir(), id); }
+        @JavascriptInterface public String readChapter(int id, int pos) { return DlCore.readChapter(getFilesDir(), id, pos); }
+        @JavascriptInterface public void remove(int id) { DownloadService.remove(getFilesDir(), id); }
     }
 
     // ================= Sách nói (Google TTS) =================

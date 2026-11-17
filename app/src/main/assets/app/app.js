@@ -460,7 +460,7 @@ function openReader(story, toc, startIdx, startP) {
   if (bg) closeBg();
   const el = push(h(`<div class="rd hide">
     <div class="rtop bar"><button class="bk">←</button><b class="rt"></b></div>
-    <div class="rscroll"></div><div class="pgnum" hidden></div>
+    <div class="rscroll"></div><div class="pgnum" hidden><span class="pgl"></span><span class="pgr"></span></div><div class="rhead"></div>
     <div class="tts" hidden>
       <div class="tr"><button id="tp">⏮</button><button id="tpl" class="pl">▶</button><button id="tn">⏭</button>
         <select id="tr">${[0.75, 0.9, 1, 1.15, 1.3, 1.5, 2].map(v => `<option value="${v}">${v}x</option>`).join("")}</select>
@@ -470,9 +470,9 @@ function openReader(story, toc, startIdx, startP) {
     </div>
     <div class="rbot"><button id="bp">‹</button><button id="bt">☰</button><button id="ba">Aa</button><button id="bm"></button><button id="bh">🎧</button><button id="bn">›</button></div>
   </div>`));
-  const scroll = $(".rscroll", el), ttsEl = $(".tts", el), pgnum = $(".pgnum", el);
+  const scroll = $(".rscroll", el), ttsEl = $(".tts", el), pgnum = $(".pgnum", el), pgl = $(".pgl", el), pgr = $(".pgr", el), rhead = $(".rhead", el);
   let text = null, hclip = null, hcols = null, W = 300, H = 400, page = 0, pages = 1, curCh = null;
-  let idx = startIdx, tok = 0, saveT, lastAct = Date.now(), swipedAt = 0;
+  let idx = startIdx, tok = 0, saveT, lastAct = Date.now(), swipedAt = 0, anim = 0;
   const curTitle = () => toc[idx] ? toc[idx].title : "";
   const isPage = () => cfg.mode === "page";
   const show = () => el.classList.toggle("hide");
@@ -506,15 +506,31 @@ function openReader(story, toc, startIdx, startP) {
     const cr = hclip.getBoundingClientRect();
     return Math.floor((r.left - cr.left + hclip.scrollLeft) / W + 0.001);
   }
-  function hGo(n) {
+  // cuộn mượt tới vị trí x (ease-out)
+  function animTo(x, ms = 280) {
+    cancelAnimationFrame(anim);
+    if (!hclip) return;
+    const from = hclip.scrollLeft, d = x - from, t0 = performance.now();
+    if (!d) return;
+    const step = t => {
+      if (!hclip) return;
+      const k = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - k, 3);
+      hclip.scrollLeft = k < 1 ? from + d * e : x;
+      if (k < 1) anim = requestAnimationFrame(step);
+    };
+    anim = requestAnimationFrame(step);
+  }
+  function hGo(n, animate) {
     page = Math.max(0, Math.min(pages - 1, n));
-    hclip.scrollLeft = page * W;
-    pgnum.textContent = `${page + 1} / ${pages}  ·  ${curTitle()}`;
+    if (animate) animTo(page * W); else { cancelAnimationFrame(anim); hclip.scrollLeft = page * W; }
+    pgl.textContent = `${page + 1}/${pages}`;
+    pgr.textContent = `${idx + 1}/${toc.length}  ${(page / pages * 100).toFixed(1).replace(".", ",")}%`;
+    rhead.textContent = curTitle();
     clearTimeout(saveT); saveT = setTimeout(() => saveHist(), 400);
   }
   function layoutH(p, atEnd) {
-    W = Math.max(200, Math.min(scroll.clientWidth - 32, 720)); H = Math.max(200, scroll.clientHeight - 64);
-    hclip.style.cssText = `width:${W}px;height:${H}px;margin:24px auto 0`;
+    W = Math.max(200, Math.min(scroll.clientWidth - 32, 720)); H = Math.max(200, scroll.clientHeight - 72);
+    hclip.style.cssText = `width:${W}px;height:${H}px;margin:34px auto 0`;
     hcols.style.cssText = `height:${H}px;column-width:${W}px;column-gap:0;--hh:${H}px`;
     pages = Math.max(1, Math.round(hclip.scrollWidth / W));
     let n = 0;
@@ -522,21 +538,42 @@ function openReader(story, toc, startIdx, startP) {
     else if (p) { const t = $(`[data-p="${p}"]`, hcols); if (t) n = pageOf(t); }
     pgnum.hidden = false; hGo(n);
   }
-  const hNext = () => { if (page < pages - 1) hGo(page + 1); else if (idx < toc.length - 1) goTo(idx + 1); else toast("Hết truyện"); };
-  const hPrev = () => { if (page > 0) hGo(page - 1); else if (idx > 0) goTo(idx - 1, { end: true }); };
+  const hNext = () => { if (page < pages - 1) hGo(page + 1, true); else if (idx < toc.length - 1) goTo(idx + 1); else { toast("Hết truyện"); animTo(page * W, 200); } };
+  const hPrev = () => { if (page > 0) hGo(page - 1, true); else if (idx > 0) goTo(idx - 1, { end: true }); else animTo(page * W, 200); };
 
   scroll.addEventListener("click", e => {
     if (e.target.closest("button") || Date.now() - swipedAt < 350) return;
     if (isPage()) { const x = e.clientX / window.innerWidth; if (x < 0.3) hPrev(); else if (x > 0.7) hNext(); else show(); }
     else show();
   });
-  let tx0 = 0, ty0 = 0;
-  scroll.addEventListener("touchstart", e => { tx0 = e.touches[0].clientX; ty0 = e.touches[0].clientY; }, { passive: true });
-  scroll.addEventListener("touchend", e => {
-    if (!isPage()) return;
-    const dx = e.changedTouches[0].clientX - tx0, dy = e.changedTouches[0].clientY - ty0;
-    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) { swipedAt = Date.now(); dx < 0 ? hNext() : hPrev(); }
+  let drag = null;
+  scroll.addEventListener("touchstart", e => {
+    if (!isPage() || !hclip || e.touches.length !== 1) { drag = null; return; }
+    cancelAnimationFrame(anim);
+    const t = e.touches[0];
+    drag = { x: t.clientX, y: t.clientY, base: hclip.scrollLeft, mode: 0, lx: t.clientX, lt: Date.now(), v: 0 };
   }, { passive: true });
+  scroll.addEventListener("touchmove", e => {
+    if (!drag || !hclip) return;
+    const t = e.touches[0], dx = t.clientX - drag.x, dy = t.clientY - drag.y;
+    if (!drag.mode) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; drag.mode = Math.abs(dx) > Math.abs(dy) ? 1 : 2; }
+    if (drag.mode !== 1) return;
+    const now = Date.now();
+    if (now > drag.lt) drag.v = (t.clientX - drag.lx) / (now - drag.lt);
+    drag.lx = t.clientX; drag.lt = now;
+    hclip.scrollLeft = drag.base - dx;
+  }, { passive: true });
+  const endDrag = (e, cancel) => {
+    const d = drag; drag = null;
+    if (!d || d.mode !== 1 || !hclip) return;
+    swipedAt = Date.now();
+    const dx = e.changedTouches[0].clientX - d.x;
+    const fast = Math.abs(d.v) > 0.45 && Math.sign(d.v) === Math.sign(dx);
+    if (!cancel && (Math.abs(dx) > W * 0.2 || fast)) { dx < 0 ? hNext() : hPrev(); }
+    else animTo(page * W, 200);
+  };
+  scroll.addEventListener("touchend", e => endDrag(e, false), { passive: true });
+  scroll.addEventListener("touchcancel", e => endDrag(e, true), { passive: true });
   ["touchstart", "click", "scroll"].forEach(ev => el.addEventListener(ev, () => { lastAct = Date.now(); }, { capture: true, passive: true }));
 
   // ---- vẽ chương ----
@@ -545,7 +582,7 @@ function openReader(story, toc, startIdx, startP) {
     const paras = renderContent(ch.content), title = esc(ch.title || curTitle());
     if (isPage()) {
       scroll.className = "rscroll hm";
-      scroll.innerHTML = `<div class="hclip"><div class="hcols"><h2 class="rch">${title}</h2>${paras}</div></div>`;
+      scroll.innerHTML = `<div class="hclip fi"><div class="hcols"><h2 class="rch">${title}</h2>${paras}</div></div>`;
       hclip = $(".hclip", scroll); hcols = $(".hcols", scroll); text = hcols;
       layoutH(p, atEnd);
       $$("img", hcols).forEach(i => i.addEventListener("load", () => relayout(true), { once: true }));

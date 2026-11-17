@@ -2,6 +2,8 @@ name: Build APK
 on:
   push:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,3 +18,11 @@ jobs:
         with:
           name: bnovel-reader-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+      # Tạo Release để app tự kiểm tra bản mới (tag v2.<số lần chạy>, khớp versionName)
+      - name: Đổi tên APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk bnovel-reader.apk
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.${{ github.run_number }}
+          name: B-novel Reader 2.${{ github.run_number }}
+          files: bnovel-reader.apk

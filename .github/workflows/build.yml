@@ -26,3 +26,4 @@ jobs:
           tag_name: v2.${{ github.run_number }}
           name: B-novel Reader 2.${{ github.run_number }}
           files: bnovel-reader.apk
+          body_path: RELEASE_NOTES.md   # nội dung này hiện trong hộp thoại cập nhật của app

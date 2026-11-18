@@ -20,8 +20,12 @@ const ICON = {
 const native = window.AndroidTTS || null;
 const APP_VER = native && window.AndroidApp ? (window.AndroidApp.versionName() || "") : "";
 
-let cfg = Object.assign({ base: BASE0, theme: "dark", size: 19, font: "serif", lh: 1.8, mode: "scroll", rate: 1, voice: "" }, ls.get("cfg", {}));
+const clampRate = v => Math.min(2, Math.max(0.1, Math.round((+v || 1) * 100) / 100));
+const fmtRate = v => (+v).toFixed(2) + "x";
+let cfg = Object.assign({ base: BASE0, theme: "dark", rtheme: "app", size: 19, font: "serif", lh: 1.8, mode: "scroll", rate: 1, voice: "" }, ls.get("cfg", {}));
 const saveCfg = () => ls.set("cfg", cfg);
+// giao diện khi đọc: "app" = theo giao diện ứng dụng, hoặc một trong các giao diện riêng
+const rKey = () => (cfg.rtheme && cfg.rtheme !== "app" && THEMES.some(t => t[0] === cfg.rtheme)) ? cfg.rtheme : cfg.theme;
 let fav = ls.get("fav", []);            // [{id,title,cover,chapters}]
 let hist = ls.get("hist", {});          // {sid:{id,title,cover,pos,ct,p,t}}
 let dl = ls.get("dl", {});              // {sid:{story,chapters,have:[pos],imgs:[file]}}
@@ -70,17 +74,29 @@ function applyTheme() {
   r.dataset.theme = cfg.theme;
   r.style.setProperty("--size", cfg.size + "px");
   r.style.setProperty("--lh", cfg.lh);
-  r.style.setProperty("--font", cfg.font === "sans" ? "system-ui,'Be Vietnam Pro',sans-serif" : "'Noto Serif',Georgia,'Times New Roman',serif");
+  r.style.setProperty("--font", (FONTS[cfg.font] || FONTS.serif)[1]);
   applyBars();
 }
+const FONTS = {
+  serif: ["Noto Serif (mặc định)", "'Noto Serif',Georgia,'Times New Roman',serif"],
+  lora: ["Lora - mềm mại, sang trọng", "'Lora','Noto Serif',Georgia,serif"],
+  crimson: ["Crimson Pro - gần giống Minion", "'Crimson Pro','Noto Serif',Georgia,serif"],
+  plex: ["IBM Plex Serif - hiện đại, rõ nét", "'IBM Plex Serif','Noto Serif',Georgia,serif"],
+  times: ["Liberation Serif - kiểu Times New Roman", "'Liberation Serif','Times New Roman','Noto Serif',serif"],
+  work: ["Work Sans - không chân, dễ đọc", "'Work Sans',system-ui,'Be Vietnam Pro',sans-serif"],
+  sans: ["Không chân (hệ thống)", "system-ui,'Be Vietnam Pro',sans-serif"],
+};
+const fontOpts = () => Object.entries(FONTS).map(([k, f]) => `<option value="${k}">${f[0]}</option>`).join("");
 const BARS = { dark: ["#15171b", 0], black: ["#000000", 0], sepia: ["#f3ecdc", 1], light: ["#fbfbfc", 1], march7: ["#fdeaf3", 1] };
 function applyBars() {
-  const b = BARS[cfg.theme] || BARS.dark;
+  let key = cfg.theme;
+  try { const t = stack[stack.length - 1]; if (t && t.classList.contains("rd") && t.style.display !== "none") key = t.dataset.theme || key; } catch {}
+  const b = BARS[key] || BARS.dark;
   try { if (window.AndroidApp && window.AndroidApp.setBars) window.AndroidApp.setBars(b[0], !!b[1]); } catch {}
 }
 applyBars();
 applyTheme();
-const swatches = cur => THEMES.map(([k, c]) => `<button data-th="${k}" class="${cur === k ? "on" : ""}" style="background:${c}" aria-label="${k}"></button>`).join("");
+const swatches = (cur, attr = "data-th") => THEMES.map(([k, c]) => `<button ${attr}="${k}" class="${cur === k ? "on" : ""}" style="background:${c}" aria-label="${k}"></button>`).join("");
 
 // ---------- HTTP ----------
 let hid = 0; const pend = {};
@@ -201,9 +217,10 @@ function setSyncIcon(on) { const b = $("#syncb"); if (b) b.classList.toggle("spi
 const app = $("#app"), view = $("#view");
 // ảnh bìa hiện mờ dần khi tải xong (load/error không nổi bọt nên bắt ở pha capture)
 ["load", "error"].forEach(ev => document.addEventListener(ev, e => { if (e.target && e.target.tagName === "IMG") e.target.classList.add("ld"); }, true));
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", () => { if (window.__fontsDone) window.__fontsDone(); });
 const stack = []; let tab = "lib", sheetEl = null, bg = null;
-function push(el) { el.classList.add("screen"); app.append(el); stack.push(el); updateMini(); return el; }
-function pop() { const el = stack.pop(); if (el) { if (el.onclose) el.onclose(); el.classList.add("out"); setTimeout(() => el.remove(), 240); } updateMini(); }
+function push(el) { el.classList.add("screen"); app.append(el); stack.push(el); updateMini(); applyBars(); return el; }
+function pop() { const el = stack.pop(); if (el) { if (el.onclose) el.onclose(); el.classList.add("out"); setTimeout(() => el.remove(), 240); } updateMini(); applyBars(); }
 function openSheet(html) {
   closeSheet();
   sheetEl = h(`<div class="back"><div class="sheet">${html}</div></div>`);
@@ -363,14 +380,16 @@ function renderSettings() {
       <div class="r"><button class="btn solid" id="syncnow">Đồng bộ ngay</button><button class="btn danger" id="unlink">Hủy liên kết</button></div>`
     : `<p class="muted">Trên web: vào <b>Tài khoản → Tạo mã liên kết</b>, rồi nhập mã 8 ký tự vào đây để đồng bộ.</p>
       <div class="r"><input id="lc" maxlength="9" autocapitalize="characters" placeholder="MÃ LIÊN KẾT" style="flex:1;text-transform:uppercase"><button class="btn solid" id="linkgo">Liên kết</button></div>`}
-    <h4>Giao diện</h4><div class="themes">${swatches(cfg.theme)}</div>
+    <h4>Giao diện ứng dụng</h4><div class="themes">${swatches(cfg.theme)}</div>
+    <h4>Giao diện khi đọc truyện</h4><div class="themes">${swatches(cfg.rtheme === "app" ? "" : cfg.rtheme, "data-rth")}</div>
+    <div class="chips"><button class="chip ${cfg.rtheme === "app" ? "on" : ""}" id="rtApp">Theo giao diện ứng dụng</button></div>
     <h4>Chữ khi đọc</h4>
     <div class="r"><label>Chế độ đọc</label><select id="md"><option value="scroll">Cuộn dọc</option><option value="page">Vuốt ngang (lật trang)</option></select></div>
     <div class="r"><label>Cỡ chữ: <span id="sv">${cfg.size}</span>px</label><input id="sz" type="range" min="14" max="30" value="${cfg.size}"></div>
     <div class="r"><label>Giãn dòng: <span id="lv">${cfg.lh}</span></label><input id="lh" type="range" min="1.4" max="2.4" step="0.1" value="${cfg.lh}"></div>
-    <div class="r"><label>Font</label><select id="fn"><option value="serif">Có chân (Noto Serif)</option><option value="sans">Không chân</option></select></div>
+    <div class="r"><label>Font</label><select id="fn">${fontOpts()}</select></div>
     <h4>Sách nói</h4>
-    <div class="r"><label>Tốc độ mặc định</label><select id="rt">${[0.75, 0.9, 1, 1.15, 1.3, 1.5, 2].map(v => `<option value="${v}">${v}x</option>`).join("")}</select></div>
+    <div class="r"><label>Tốc độ mặc định: <span id="rv">${fmtRate(cfg.rate)}</span></label><input id="rt" type="range" min="0.1" max="2" step="0.01" value="${cfg.rate}"></div>
     ${native ? `<div class="r"><button class="btn" id="ttsset">Cài đặt giọng nói của máy</button></div>` : ""}
     <h4>Máy chủ</h4>
     <div class="r"><input id="bs" style="flex:1" value="${esc(cfg.base)}"></div>
@@ -381,13 +400,15 @@ function renderSettings() {
     <h4>Ứng dụng</h4>
     <div class="r"><label>Phiên bản: <b>${esc(APP_VER || "web")}</b></label>${native ? `<button class="btn" id="chkupd">Kiểm tra cập nhật</button>` : ""}</div>
     <p class="empty">B-novel Reader</p></div>`;
-  $("#fn").value = cfg.font; $("#rt").value = String(cfg.rate); $("#md").value = cfg.mode;
+  $("#fn").value = cfg.font; $("#md").value = cfg.mode;
   $$("[data-th]", view).forEach(b => b.onclick = () => { cfg.theme = b.dataset.th; saveCfg(); applyTheme(); renderSettings(); });
+  $$("[data-rth]", view).forEach(b => b.onclick = () => { cfg.rtheme = b.dataset.rth; saveCfg(); renderSettings(); });
+  $("#rtApp").onclick = () => { cfg.rtheme = "app"; saveCfg(); renderSettings(); };
   $("#sz").oninput = e => { cfg.size = +e.target.value; $("#sv").textContent = cfg.size; saveCfg(); applyTheme(); };
   $("#lh").oninput = e => { cfg.lh = +e.target.value; $("#lv").textContent = cfg.lh; saveCfg(); applyTheme(); };
   $("#fn").onchange = e => { cfg.font = e.target.value; saveCfg(); applyTheme(); };
   $("#md").onchange = e => { cfg.mode = e.target.value; saveCfg(); };
-  $("#rt").onchange = e => { cfg.rate = +e.target.value; saveCfg(); };
+  $("#rt").oninput = e => { cfg.rate = clampRate(e.target.value); $("#rv").textContent = fmtRate(cfg.rate); saveCfg(); };
   if ($("#ttsset")) $("#ttsset").onclick = () => AndroidTTS.openSettings();
   if ($("#syncnow")) $("#syncnow").onclick = () => sync(true);
   if ($("#chkupd")) $("#chkupd").onclick = () => checkUpdate(true);
@@ -556,14 +577,14 @@ async function resume(id) {
 // ---------- Trình đọc + sách nói ----------
 function openReader(story, toc, startIdx, startP) {
   if (bg) closeBg();
-  const el = push(h(`<div class="rd hide">
+  const el = push(h(`<div class="rd hide" data-theme="${rKey()}">
     <div class="rtop bar"><button class="bk" aria-label="Quay lại">${ICON.back}</button><b class="rt"></b></div>
     <div class="rscroll"></div><div class="pgnum" hidden><span class="pgl"></span><span class="pgr"></span></div><div class="rhead"></div>
     <div class="tts" hidden>
       <div class="tr"><button id="tp">⏮</button><button id="tpl" class="pl">▶</button><button id="tn">⏭</button>
-        <select id="tr">${[0.75, 0.9, 1, 1.15, 1.3, 1.5, 2].map(v => `<option value="${v}">${v}x</option>`).join("")}</select>
         <select id="ts"><option value="0">⏲ Tắt</option><option value="15">15 phút</option><option value="30">30 phút</option><option value="60">60 phút</option><option value="90">90 phút</option></select>
         <button id="tx">✕</button></div>
+      <div class="tr tr3"><small>Tốc độ</small><button id="trm" aria-label="Giảm 0,01">−</button><input id="tr" type="range" min="0.1" max="2" step="0.01"><button id="trp" aria-label="Tăng 0,01">+</button><b id="trv"></b></div>
       <div class="tr tr2"><select id="tv"></select><small id="tst"></small></div>
     </div>
     <div class="rbot"><button id="bp">‹</button><button id="bt" aria-label="Mục lục">${ICON.list}</button><button id="ba">Aa</button><button id="bm"></button><button id="bh" aria-label="Nghe">${ICON.phones}</button><button id="bn">›</button></div>
@@ -698,6 +719,7 @@ function openReader(story, toc, startIdx, startP) {
     else paint(curCh, currentP());
   }
   let rsT; const onResize = () => { clearTimeout(rsT); rsT = setTimeout(() => relayout(), 200); };
+  window.__fontsDone = () => relayout(true);
   window.addEventListener("resize", onResize);
 
   async function load(i, p = 0, atEnd = false) {
@@ -726,6 +748,7 @@ function openReader(story, toc, startIdx, startP) {
   $("#bn", el).onclick = () => goTo(idx + 1);
   $("#bt", el).onclick = () => {
     const s = openSheet(`<h3>Danh sách chương</h3>${toc.map((c, i) => `<div class="ch ${i === idx ? "cur" : ""}" data-i="${i}"><span>${esc(c.title)}</span>${dl[story.id] && dl[story.id].have.includes(c.position) ? "<i>✓</i>" : ""}</div>`).join("")}`);
+    sheetEl.dataset.theme = el.dataset.theme;
     $$(".ch", s).forEach(c => c.onclick = () => { closeSheet(); goTo(+c.dataset.i); });
     const cur = $(".cur", s); if (cur) cur.scrollIntoView({ block: "center" });
   };
@@ -737,11 +760,12 @@ function openReader(story, toc, startIdx, startP) {
     toast(isPage() ? "Vuốt ngang: chạm mép trái/phải hoặc vuốt để lật trang" : "Chế độ cuộn dọc");
   };
   $("#ba", el).onclick = () => {
-    const s = openSheet(`<h3>Cài đặt đọc</h3><div class="themes">${swatches(cfg.theme)}</div>
+    const s = openSheet(`<h3>Cài đặt đọc</h3><div class="themes">${swatches(cfg.rtheme === "app" ? "" : cfg.rtheme, "data-rth")}</div>
+      <div class="chips"><button class="chip ${cfg.rtheme === "app" ? "on" : ""}" id="rtapp">Theo giao diện ứng dụng</button></div>
       <div class="stp"><label>Chế độ</label><select id="md"><option value="scroll">Cuộn dọc</option><option value="page">Vuốt ngang</option></select></div>
       <div class="stp"><label>Cỡ chữ</label><button id="s1">−</button><b id="sv">${cfg.size}</b><button id="s2">+</button></div>
       <div class="stp"><label>Giãn dòng</label><button id="l1">−</button><b id="lv">${cfg.lh}</b><button id="l2">+</button></div>
-      <div class="stp"><label>Font</label><select id="fn"><option value="serif">Có chân</option><option value="sans">Không chân</option></select></div>`);
+      <div class="stp"><label>Font</label><select id="fn">${fontOpts()}</select></div>`);
     $("#fn", s).value = cfg.font; $("#md", s).value = cfg.mode;
     const upd = () => { saveCfg(); applyTheme(); $("#sv", s).textContent = cfg.size; $("#lv", s).textContent = cfg.lh; setTimeout(() => relayout(), 30); };
     $("#s1", s).onclick = () => { cfg.size = Math.max(14, cfg.size - 1); upd(); };
@@ -750,7 +774,14 @@ function openReader(story, toc, startIdx, startP) {
     $("#l2", s).onclick = () => { cfg.lh = Math.min(2.4, +(cfg.lh + 0.1).toFixed(1)); upd(); };
     $("#fn", s).onchange = e => { cfg.font = e.target.value; upd(); };
     $("#md", s).onchange = e => { lastP = currentP(); cfg.mode = e.target.value; saveCfg(); modeLabel(); if (curCh) paint(curCh, lastP); };
-    $$("[data-th]", s).forEach(b => b.onclick = () => { cfg.theme = b.dataset.th; saveCfg(); applyTheme(); $$("[data-th]", s).forEach(x => x.classList.toggle("on", x === b)); });
+    sheetEl.dataset.theme = el.dataset.theme;
+    const setRT = k => {
+      cfg.rtheme = k; saveCfg(); el.dataset.theme = rKey(); if (sheetEl) sheetEl.dataset.theme = el.dataset.theme; applyBars();
+      $$("[data-rth]", s).forEach(x => x.classList.toggle("on", x.dataset.rth === cfg.rtheme));
+      $("#rtapp", s).classList.toggle("on", cfg.rtheme === "app");
+    };
+    $$("[data-rth]", s).forEach(b => b.onclick = () => setRT(b.dataset.rth));
+    $("#rtapp", s).onclick = () => setRT("app");
   };
 
   // ---- Sách nói ----
@@ -844,8 +875,15 @@ function openReader(story, toc, startIdx, startP) {
     $("#tn", el).onclick = () => { const i = paraStart(1); if (i < 0) T.finished(); else T.start(i); };
     $("#tp", el).onclick = () => T.start(paraStart(-1));
     $("#tx", el).onclick = () => { T.stopAll(); if (bg === el) closeBg(); };
-    rs.value = String(cfg.rate); if (rs.value !== String(cfg.rate)) rs.value = "1";
-    rs.onchange = () => { cfg.rate = +rs.value; saveCfg(); if (T.playing) T.start(pos); };
+    const rv = $("#trv", el);
+    const setRate = v => { cfg.rate = clampRate(v); rs.value = String(cfg.rate); rv.textContent = fmtRate(cfg.rate); };
+    setRate(cfg.rate);
+    rs.oninput = () => setRate(rs.value);                                   // kéo: chỉ cập nhật số hiển thị
+    rs.onchange = () => { saveCfg(); if (T.playing) T.start(pos); };        // thả tay: áp dụng ngay
+    let nudgeT;
+    const nudge = d => { setRate(cfg.rate + d); saveCfg(); clearTimeout(nudgeT); nudgeT = setTimeout(() => { if (T.playing) T.start(pos); }, 450); };
+    $("#trm", el).onclick = () => nudge(-0.01);
+    $("#trp", el).onclick = () => nudge(0.01);
     vs.onchange = () => { cfg.voice = vs.value; saveCfg(); if (native) native.setVoice(vs.value); if (T.playing) T.start(pos); };
     ss.onchange = () => { clearTimeout(sleepT); const m = +ss.value; if (m > 0) sleepT = setTimeout(() => { T.pause(); st.textContent = "Đã hết giờ hẹn"; ss.value = "0"; }, m * 60000); };
     $("#bh", el).onclick = () => {
@@ -889,7 +927,7 @@ function openReader(story, toc, startIdx, startP) {
 
   el._api = { title: () => story.title, ch: curTitle, playing: () => tts.playing, toggle: () => tts.toggle() };
   el._leave = () => {
-    if (tts.active()) { const i = stack.indexOf(el); if (i >= 0) stack.splice(i, 1); el.style.display = "none"; bg = el; updateMini(); }
+    if (tts.active()) { const i = stack.indexOf(el); if (i >= 0) stack.splice(i, 1); el.style.display = "none"; bg = el; updateMini(); applyBars(); }
     else pop();
   };
   $(".bk", el).onclick = el._leave;
@@ -897,7 +935,7 @@ function openReader(story, toc, startIdx, startP) {
   document.addEventListener("visibilitychange", onVis);
   el.onclose = () => {
     ls.set("last", null); document.removeEventListener("visibilitychange", onVis);
-    tts.stopAll(); clearInterval(readT); clearTimeout(saveT); window.removeEventListener("resize", onResize);
+    tts.stopAll(); clearInterval(readT); clearTimeout(saveT); window.removeEventListener("resize", onResize); window.__fontsDone = null;
     if (curCh) saveHist(); delete window.__ttsNative; updateMini();
     if (tab === "lib" && !stack.length) renderLib();
   };
@@ -910,17 +948,56 @@ const REPO = "tombin20/bnovel-reader";
 const verNum = v => String(v || "").replace(/^[^\d]*/, "").split(".").map(x => parseInt(x, 10) || 0);
 const isNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; } return false; };
 const rawGet = url => new Promise((ok, err) => { const id = ++hid; pend[id] = { ok, err }; AndroidHttp.request(id, "GET", url, "", ""); });
+// Markdown rút gọn của ghi chú phát hành: tiêu đề (#), gạch đầu dòng (- hoặc *), **đậm**, `mã`
+const mdInline = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>");
+function mdLite(md) {
+  const out = []; let inList = false;
+  for (const raw of String(md || "").split(/\r?\n/)) {
+    const l = raw.trim(), li = l.match(/^[-*•]\s+(.*)/);
+    if (li) { if (!inList) { out.push("<ul>"); inList = true; } out.push(`<li>${mdInline(li[1])}</li>`); continue; }
+    if (inList) { out.push("</ul>"); inList = false; }
+    if (!l) continue;
+    const hd = l.match(/^#{1,6}\s+(.*)/);
+    out.push(hd ? `<h5>${mdInline(hd[1])}</h5>` : `<p>${mdInline(l)}</p>`);
+  }
+  if (inList) out.push("</ul>");
+  return out.join("");
+}
+// Hộp thoại cập nhật to, có tóm tắt thay đổi. Tắt/để sau đều được, nhưng lần mở app sau sẽ hiện lại.
+function showUpdate(u) {
+  if (sheetEl && sheetEl.querySelector(".upd-hero")) return;
+  const notes = mdLite(u.notes) || "<p>Bản mới có nhiều cải tiến và sửa lỗi.</p>";
+  const sh = openSheet(`
+    <div class="upd-hero">
+      <button class="upd-x" id="updx" aria-label="Đóng">✕</button>
+      <div class="upd-ic"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></div>
+      <h3>Có bản cập nhật mới!</h3>
+      <div class="upd-ver"><span>${esc(APP_VER)}</span><i>→</i><b>${esc(String(u.tag).replace(/^v/i, ""))}</b></div>
+    </div>
+    <div class="upd-body"><h4>Có gì mới</h4><div class="upd-notes">${notes}</div></div>
+    <div class="upd-actions">
+      <button class="btn solid" id="updgo">⬇ Cập nhật ngay</button>
+      <button class="btn" id="updlater">Để sau</button>
+    </div>`);
+  sh.classList.add("upd");
+  $("#updx", sh).onclick = $("#updlater", sh).onclick = closeSheet;
+  $("#updgo", sh).onclick = () => { window.AndroidApp.openUrl(u.url); closeSheet(); };
+}
 async function checkUpdate(manual) {
   if (!native || !window.AndroidApp || !APP_VER) { if (manual) toast("Chỉ dùng được trong app Android"); return; }
+  let info = null;
   try {
     const r = await rawGet(`https://api.github.com/repos/${REPO}/releases/latest`);
-    ls.set("updT", Date.now());
     const tag = r.tag_name || "", apk = (r.assets || []).find(a => /\.apk$/i.test(a.name));
-    if (!tag || !apk || !isNewer(tag, APP_VER)) { if (manual) toast("Bạn đang dùng bản mới nhất (" + APP_VER + ")"); return; }
-    if (!manual && ls.get("updSkip", "") === tag) return;
-    if (confirm(`Có bản mới ${tag} (đang dùng ${APP_VER}).\nTải về bây giờ?`)) window.AndroidApp.openUrl(apk.browser_download_url);
-    else ls.set("updSkip", tag);
-  } catch (e) { if (manual) toast("Không kiểm tra được: " + e.message); }
+    if (tag && apk && isNewer(tag, APP_VER)) info = { tag, url: apk.browser_download_url, notes: r.body || "" };
+    ls.set("updInfo", info);   // nhớ lại để lần sau mất mạng vẫn nhắc được
+  } catch (e) {
+    info = ls.get("updInfo", null);
+    if (info && !isNewer(info.tag, APP_VER)) info = null;
+    if (!info) { if (manual) toast("Không kiểm tra được: " + e.message); return; }
+  }
+  if (!info) { if (manual) toast("Bạn đang dùng bản mới nhất (" + APP_VER + ")"); return; }
+  showUpdate(info);
 }
 
 // ---------- Khởi động ----------
@@ -932,5 +1009,12 @@ if (acct) sync(false);
   const last = ls.get("last", null);
   if (last && last.id && hist[last.id]) { ls.set("last", null); resume(last.id); }   // xóa trước để nếu lỗi không bị lặp mãi
 }
-if (native && Date.now() - ls.get("updT", 0) > 6 * 3600 * 1000) setTimeout(() => checkUpdate(false), 4000);
+if (native) {
+  setTimeout(() => checkUpdate(false), 1500);                       // mỗi lần mở app
+  let hiddenAt = 0;                                                 // và khi quay lại app sau >= 10 phút
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) hiddenAt = Date.now();
+    else if (hiddenAt && Date.now() - hiddenAt > 10 * 60 * 1000) { hiddenAt = 0; checkUpdate(false); }
+  });
+}
 })();

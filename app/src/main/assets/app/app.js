@@ -11,6 +11,12 @@ const ls = {
 const h = html => { const d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstElementChild; };
 const BASE0 = "https://bnovel.tombin2k.workers.dev";
 const THEMES = [["dark", "#17191d"], ["black", "#000"], ["sepia", "#f1eadb"], ["light", "#fff"], ["march7", "linear-gradient(135deg,#f6a6cb,#a9cdf3)"]];
+const SV = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  back: SV('<path d="M15 5l-7 7 7 7"/>'),
+  list: SV('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>'),
+  phones: SV('<path d="M4 15v-3a8 8 0 0116 0v3"/><rect x="3" y="14" width="4" height="6.5" rx="1.6"/><rect x="17" y="14" width="4" height="6.5" rx="1.6"/>'),
+};
 const native = window.AndroidTTS || null;
 const APP_VER = native && window.AndroidApp ? (window.AndroidApp.versionName() || "") : "";
 
@@ -55,7 +61,9 @@ function cacheImg(u, w) {
 let toastT;
 function toast(msg) {
   const t = $("#toast"); t.textContent = msg; t.hidden = false;
-  clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600);
+  t.classList.remove("out"); t.style.animation = "none"; void t.offsetWidth; t.style.animation = "";
+  clearTimeout(toastT);
+  toastT = setTimeout(() => { t.classList.add("out"); toastT = setTimeout(() => { t.hidden = true; t.classList.remove("out"); }, 220); }, 2600);
 }
 function applyTheme() {
   const r = document.documentElement;
@@ -63,7 +71,14 @@ function applyTheme() {
   r.style.setProperty("--size", cfg.size + "px");
   r.style.setProperty("--lh", cfg.lh);
   r.style.setProperty("--font", cfg.font === "sans" ? "system-ui,'Be Vietnam Pro',sans-serif" : "'Noto Serif',Georgia,'Times New Roman',serif");
+  applyBars();
 }
+const BARS = { dark: ["#15171b", 0], black: ["#000000", 0], sepia: ["#f3ecdc", 1], light: ["#fbfbfc", 1], march7: ["#fdeaf3", 1] };
+function applyBars() {
+  const b = BARS[cfg.theme] || BARS.dark;
+  try { if (window.AndroidApp && window.AndroidApp.setBars) window.AndroidApp.setBars(b[0], !!b[1]); } catch {}
+}
+applyBars();
 applyTheme();
 const swatches = cur => THEMES.map(([k, c]) => `<button data-th="${k}" class="${cur === k ? "on" : ""}" style="background:${c}" aria-label="${k}"></button>`).join("");
 
@@ -184,16 +199,18 @@ function setSyncIcon(on) { const b = $("#syncb"); if (b) b.classList.toggle("spi
 
 // ---------- Điều hướng ----------
 const app = $("#app"), view = $("#view");
+// ảnh bìa hiện mờ dần khi tải xong (load/error không nổi bọt nên bắt ở pha capture)
+["load", "error"].forEach(ev => document.addEventListener(ev, e => { if (e.target && e.target.tagName === "IMG") e.target.classList.add("ld"); }, true));
 const stack = []; let tab = "lib", sheetEl = null, bg = null;
 function push(el) { el.classList.add("screen"); app.append(el); stack.push(el); updateMini(); return el; }
-function pop() { const el = stack.pop(); if (el) { if (el.onclose) el.onclose(); el.remove(); } updateMini(); }
+function pop() { const el = stack.pop(); if (el) { if (el.onclose) el.onclose(); el.classList.add("out"); setTimeout(() => el.remove(), 240); } updateMini(); }
 function openSheet(html) {
   closeSheet();
   sheetEl = h(`<div class="back"><div class="sheet">${html}</div></div>`);
   sheetEl.addEventListener("click", e => { if (e.target === sheetEl) closeSheet(); });
   document.body.append(sheetEl); return $(".sheet", sheetEl);
 }
-function closeSheet() { if (sheetEl) { sheetEl.remove(); sheetEl = null; } }
+function closeSheet() { if (sheetEl) { const e = sheetEl; sheetEl = null; e.classList.add("closing"); setTimeout(() => e.remove(), 220); } }
 window.__back = () => {
   try {
     if (sheetEl) { closeSheet(); return true; }
@@ -228,10 +245,12 @@ function go(t) {
   $("#syncb").hidden = !acct || t !== "lib";
   $$("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   view.scrollTop = 0;
+  view.classList.remove("swap"); void view.offsetWidth; view.classList.add("swap");
   ({ lib: renderLib, home: renderHome, genre: renderGenres, stat: renderStats, set: renderSettings })[t]();
 }
 $("#tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) { while (stack.length) pop(); go(b.dataset.tab); } });
 $("#syncb").onclick = () => sync(true);
+view.addEventListener("scroll", () => $("#top").classList.toggle("sc", view.scrollTop > 6), { passive: true });
 app.addEventListener("click", e => {
   const c = e.target.closest("[data-id]"); if (c && !e.target.closest("[data-del]")) openStory(+c.dataset.id);
   const r = e.target.closest("[data-resume]"); if (r && !e.target.closest("[data-del]")) resume(+r.dataset.resume);
@@ -241,6 +260,7 @@ const card = (s, mode) => `<button class="card" ${mode === "resume" ? `data-resu
   <span class="bd">${fav.some(f => f.id === s.id) ? "♥" : ""}${dl[s.id] ? "⬇" : ""}</span></div><b>${esc(s.title)}</b>
   <small>${esc(s.ct || (s.chapters ? s.chapters + " chương" : ""))}</small></button>`;
 const grid = (l, mode) => l.map(s => card(s, mode)).join("");
+const skel = (n = 9) => Array.from({ length: n }, () => `<div class="card sk"><div class="cvw"><div class="cv"></div></div><b></b><small></small></div>`).join("");
 
 // ---------- Tủ sách (trang chủ) ----------
 let libTab = "all";
@@ -287,7 +307,7 @@ async function deleteDl(id) {
 
 // ---------- Khám phá ----------
 async function renderHome() {
-  view.innerHTML = `<div class="search"><input id="q" type="search" placeholder="Tìm truyện..."></div><div id="list" class="grid"><p class="load">Đang tải...</p></div>`;
+  view.innerHTML = `<div class="search"><input id="q" type="search" placeholder="Tìm truyện..."></div><div id="list" class="grid">${skel()}</div>`;
   let all;
   try { all = await stories(); } catch (e) { $("#list").innerHTML = `<p class="err" style="grid-column:1/-1">${esc(e.message)}<br><button class="btn" id="retry">Thử lại</button></p>`; $("#retry").onclick = renderHome; return; }
   const draw = q => {
@@ -307,7 +327,7 @@ async function renderGenres() {
   } catch (e) { view.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
 }
 async function openList(title, path) {
-  const el = push(h(`<div><div class="bar"><button class="bk">←</button><b>${esc(title)}</b></div><div class="body"><div class="grid"><p class="load">Đang tải...</p></div></div></div>`));
+  const el = push(h(`<div><div class="bar"><button class="bk" aria-label="Quay lại">${ICON.back}</button><b>${esc(title)}</b></div><div class="body"><div class="grid">${skel()}</div></div></div>`));
   $(".bk", el).onclick = pop;
   try { const l = (await api(path)).stories; $(".grid", el).innerHTML = l.length ? grid(l) : `<p class="empty">Chưa có truyện</p>`; }
   catch (e) { $(".grid", el).innerHTML = `<p class="err">${esc(e.message)}</p>`; }
@@ -414,7 +434,7 @@ window.__dl = id => {
   if (dlRedraw[id]) dlRedraw[id]();
 };
 async function openStory(id) {
-  const el = push(h(`<div><div class="bar"><button class="bk">←</button><b>Truyện</b></div><div class="body"><p class="load">Đang tải...</p></div></div>`));
+  const el = push(h(`<div><div class="bar"><button class="bk" aria-label="Quay lại">${ICON.back}</button><b>Truyện</b></div><div class="body"><p class="load">Đang tải...</p></div></div>`));
   $(".bk", el).onclick = pop;
   const body = $(".body", el);
   let s, toc;
@@ -425,10 +445,10 @@ async function openStory(id) {
   const draw = () => {
     const d = dl[id], have = new Set(d ? d.have : []), hs = hist[id], isFav = fav.some(f => f.id === id), job = jobs[id];
     const list = asc ? toc : [...toc].reverse();
-    body.innerHTML = `<div class="dhead"><img src="${esc(img(s.cover, 400))}" alt=""><div><h2>${esc(s.title)}</h2>
+    body.innerHTML = `<div class="hero" style="--cv:url('${esc(img(s.cover, 400))}')"><div class="dhead"><img src="${esc(img(s.cover, 400))}" alt=""><div><h2>${esc(s.title)}</h2>
       ${(s.authors || []).length ? `<p>Tác giả: ${esc(s.authors.join(", "))}</p>` : ""}
       ${(s.illustrators || []).length ? `<p>Họa sĩ: ${esc(s.illustrators.join(", "))}</p>` : ""}
-      ${s.series ? `<p>Series: ${esc(s.series)}</p>` : ""}<p>${esc(s.status || "")} · ${toc.length} chương</p></div></div>
+      ${s.series ? `<p>Series: ${esc(s.series)}</p>` : ""}<p>${esc(s.status || "")} · ${toc.length} chương</p></div></div></div>
       <div class="acts"><button class="btn solid" id="read">${hs ? "▶ Đọc tiếp" : "▶ Đọc"}</button>
       <button class="btn" id="fv">${isFav ? "♥ Đang theo dõi" : "♡ Theo dõi"}</button>
       <button class="btn" id="dlb">${job ? "⏹ Đang tải " + (job.native ? job.done + "/" + job.total : (d ? d.have.length : 0) + "/" + toc.length) : d && d.have.length >= toc.length ? "✓ Đã tải" : "⬇ Tải xuống"}</button>
@@ -537,7 +557,7 @@ async function resume(id) {
 function openReader(story, toc, startIdx, startP) {
   if (bg) closeBg();
   const el = push(h(`<div class="rd hide">
-    <div class="rtop bar"><button class="bk">←</button><b class="rt"></b></div>
+    <div class="rtop bar"><button class="bk" aria-label="Quay lại">${ICON.back}</button><b class="rt"></b></div>
     <div class="rscroll"></div><div class="pgnum" hidden><span class="pgl"></span><span class="pgr"></span></div><div class="rhead"></div>
     <div class="tts" hidden>
       <div class="tr"><button id="tp">⏮</button><button id="tpl" class="pl">▶</button><button id="tn">⏭</button>
@@ -546,7 +566,7 @@ function openReader(story, toc, startIdx, startP) {
         <button id="tx">✕</button></div>
       <div class="tr tr2"><select id="tv"></select><small id="tst"></small></div>
     </div>
-    <div class="rbot"><button id="bp">‹</button><button id="bt">☰</button><button id="ba">Aa</button><button id="bm"></button><button id="bh">🎧</button><button id="bn">›</button></div>
+    <div class="rbot"><button id="bp">‹</button><button id="bt" aria-label="Mục lục">${ICON.list}</button><button id="ba">Aa</button><button id="bm"></button><button id="bh" aria-label="Nghe">${ICON.phones}</button><button id="bn">›</button></div>
   </div>`));
   const scroll = $(".rscroll", el), ttsEl = $(".tts", el), pgnum = $(".pgnum", el), pgl = $(".pgl", el), pgr = $(".pgr", el), rhead = $(".rhead", el);
   let text = null, hclip = null, hcols = null, W = 300, H = 400, page = 0, pages = 1, curCh = null;

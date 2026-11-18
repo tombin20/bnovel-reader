@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -11,6 +12,7 @@ import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
+import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsResult;
 import android.webkit.WebChromeClient;
@@ -203,6 +205,22 @@ public class MainActivity extends Activity {
         public String versionName() {
             try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
             catch (Exception e) { return ""; }
+        }
+
+        // Đồng bộ màu thanh trạng thái / thanh điều hướng của Android với giao diện đang dùng
+        @JavascriptInterface
+        public void setBars(final String color, final boolean lightIcons) {
+            runOnUiThread(() -> {
+                try {
+                    int c = Color.parseColor(color);
+                    getWindow().setStatusBarColor(c);
+                    getWindow().setNavigationBarColor(c);
+                    View d = getWindow().getDecorView();
+                    int f = d.getSystemUiVisibility();
+                    int m = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                    d.setSystemUiVisibility(lightIcons ? (f | m) : (f & ~m));
+                } catch (Exception ignored) {}
+            });
         }
 
         @JavascriptInterface

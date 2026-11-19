@@ -95,6 +95,7 @@ const FONTS = {
   crimson: ["Crimson Pro - gần giống Minion", "'Crimson Pro','Noto Serif',Georgia,serif"],
   plex: ["IBM Plex Serif - hiện đại, rõ nét", "'IBM Plex Serif','Noto Serif',Georgia,serif"],
   times: ["Liberation Serif - kiểu Times New Roman", "'Liberation Serif','Times New Roman','Noto Serif',serif"],
+  grand: ["NVN Grand Hotel - chữ viết tay", "'NVN Grand Hotel','Noto Serif',Georgia,serif"],
   work: ["Work Sans - không chân, dễ đọc", "'Work Sans',system-ui,'Be Vietnam Pro',sans-serif"],
   sans: ["Không chân (hệ thống)", "system-ui,'Be Vietnam Pro',sans-serif"],
 };
@@ -594,6 +595,7 @@ function openReader(story, toc, startIdx, startP) {
     <div class="rscroll"></div><div class="pgnum" hidden><span class="pgl"></span><span class="pgr"></span></div><div class="rhead"></div>
     <div class="rdim"></div>
     <div class="tts" hidden>
+      <div class="grab" aria-label="Kéo xuống để thu gọn"></div>
       <div class="tr tmain"><button id="tpc" aria-label="Chương trước">${ICON.skipPrev}</button><button id="tp" aria-label="Câu trước">${ICON.rew}</button><button id="tpl" class="pl" aria-label="Phát/Dừng">${ICON.play}</button><button id="tn" aria-label="Câu sau">${ICON.fwd}</button><button id="tnc" aria-label="Chương sau">${ICON.skipNext}</button></div>
       <div class="tr topt">
         <label class="tsel" aria-label="Hẹn giờ tắt">${ICON.timer}<span id="tsl">Hẹn giờ</span><select id="ts"><option value="0">Tắt hẹn giờ</option><option value="15">15 phút</option><option value="30">30 phút</option><option value="60">60 phút</option><option value="90">90 phút</option></select></label>
@@ -606,8 +608,8 @@ function openReader(story, toc, startIdx, startP) {
         <div class="tr tr3"><small>Tốc độ</small><button id="trm" aria-label="Giảm 0,01">−</button><input id="tr" type="range" min="0.1" max="2" step="0.01"><button id="trp" aria-label="Tăng 0,01">+</button><b id="trv"></b></div>
         <div class="tr tr2"><select id="tv"></select></div>
       </div>
-      <div class="tr tinfo"><small id="tcnt"></small><small id="tst"></small><small id="tpg"></small></div>
     </div>
+    <div class="tinfo"><small id="tcnt"></small><small id="tst"></small><small id="tpg"></small></div>
     <div class="rbot">
       <div class="rinfo"><span id="rpct">0,0%</span><span id="rpch"></span></div>
       <div class="rsl"><button id="bp">Trước</button><input id="rsl" type="range" min="0" max="1" step="1" value="0"><button id="bn">Tiếp</button></div>
@@ -621,7 +623,7 @@ function openReader(story, toc, startIdx, startP) {
   const sl = $("#rsl", el), rpct = $("#rpct", el), rpch = $("#rpch", el), rbot = $(".rbot", el);
   let sliding = false;
   const fmtPct = v => v.toFixed(1).replace(".", ",") + "%";
-  const setRbh = () => el.style.setProperty("--rbh", (rbot.offsetHeight || 120) + "px");
+  const setRbh = () => { el.style.setProperty("--rbh", (rbot.offsetHeight || 120) + "px"); el.style.setProperty("--ih", ($(".tinfo", el).offsetHeight || 28) + "px"); };
   const applyRead = () => {            // độ sáng + màu chữ riêng của trang đọc
     $(".rdim", el).style.opacity = cfg.dim || 0;
     if (cfg.rfg) el.style.setProperty("--rfg", cfg.rfg); else el.style.removeProperty("--rfg");
@@ -842,6 +844,43 @@ function openReader(story, toc, startIdx, startP) {
     $("#rtapp", s).onclick = () => setRT("app");
   };
 
+  // ---- kéo bảng nghe xuống/lên (kiểu vBook): kéo xuống để vừa nghe vừa đọc, kéo lên hoặc chạm thanh dưới để mở lại ----
+  (() => {
+    const tinfo = $(".tinfo", el); let d = null, moved = 0;
+    const hiddenOff = () => el.classList.contains("hide") ? (parseFloat(el.style.getPropertyValue("--rbh")) || 0) : 0;
+    const minOff = () => ttsEl.offsetHeight + (parseFloat(el.style.getPropertyValue("--ih")) || 28) + 4;
+    const setMin = v => {
+      cfg.ttsMin = v; saveCfg();
+      ttsEl.style.transition = ""; ttsEl.classList.toggle("min", v); ttsEl.style.transform = "";
+    };
+    const start = e => {
+      if (ttsEl.hidden || e.touches.length !== 1 || e.target.closest("input,select,.tsel,.tts-more")) { d = null; return; }
+      const t = e.touches[0], isMin = ttsEl.classList.contains("min");
+      d = { y: t.clientY, t0: Date.now(), min: isMin, lo: hiddenOff(), hi: hiddenOff() + minOff(), on: false };
+      d.base = isMin ? d.hi : d.lo;
+    };
+    const move = e => {
+      if (!d) return; const dy = e.touches[0].clientY - d.y;
+      if (!d.on) { if (Math.abs(dy) < 8) return; d.on = true; ttsEl.style.transition = "none"; }
+      e.preventDefault(); moved = Date.now();
+      ttsEl.style.transform = `translateY(${Math.min(d.hi, Math.max(d.lo, d.base + dy))}px)`;
+    };
+    const end = e => {
+      const x = d; d = null; if (!x) return;
+      if (!x.on) { if (e.currentTarget === tinfo && e.type === "touchend") { moved = Date.now(); setMin(!x.min); } return; }
+      const dy = e.changedTouches[0].clientY - x.y, fast = Math.abs(dy) / Math.max(1, Date.now() - x.t0) > 0.5;
+      const pos = Math.min(x.hi, Math.max(x.lo, x.base + dy));
+      setMin(fast ? dy > 0 : pos > (x.lo + x.hi) / 2);
+    };
+    [ttsEl, tinfo].forEach(n => {
+      n.addEventListener("touchstart", start, { passive: true });
+      n.addEventListener("touchmove", move, { passive: false });
+      n.addEventListener("touchend", end); n.addEventListener("touchcancel", end);
+      n.addEventListener("click", ev => { if (Date.now() - moved < 350) { ev.stopPropagation(); ev.preventDefault(); } }, true);
+    });
+    $(".grab", el).addEventListener("click", () => setMin(true));
+  })();
+
   // ---- Sách nói ----
   const web = !native && "speechSynthesis" in window ? window.speechSynthesis : null;
   const tts = (() => {
@@ -893,7 +932,7 @@ function openReader(story, toc, startIdx, startP) {
       if (e) e.classList.add("tts-cur");
       else { e = chunks[i].p >= 0 && $(`p[data-p="${chunks[i].p}"]`, text); if (!e) return; e.classList.add("tts-on"); }
       if (isPage() && hclip) { const n = pageOf(e); if (n !== page) hGo(n); }
-      else { const r = e.getBoundingClientRect(), s = scroll.getBoundingClientRect(), pb = (ttsEl.hidden ? 0 : ttsEl.offsetHeight) + 50; if (r.top < s.top + 70 || r.bottom > s.bottom - pb) e.scrollIntoView({ block: "center", behavior: "smooth" }); }
+      else { const r = e.getBoundingClientRect(), s = scroll.getBoundingClientRect(), pb = (ttsEl.hidden ? 0 : ttsEl.classList.contains("min") ? 0 : ttsEl.offsetHeight) + 80; if (r.top < s.top + 70 || r.bottom > s.bottom - pb) e.scrollIntoView({ block: "center", behavior: "smooth" }); }
     };
     T.rewrap = () => { if (!chunks.length) return; wrap(); if (hl >= 0) hi(hl); };
     T.active = () => T.playing || !ttsEl.hidden;
@@ -993,7 +1032,7 @@ function openReader(story, toc, startIdx, startP) {
     $("#bh", el).onclick = () => {
       if (!ttsEl.hidden) { T.stopAll(); return; }
       if (!native && !web) { toast("Máy không hỗ trợ đọc truyện"); return; }
-      ttsEl.hidden = false; el.classList.remove("hide");
+      ttsEl.hidden = false; el.classList.remove("hide"); ttsEl.classList.toggle("min", !!cfg.ttsMin); setRbh();
       if (native) {
         native.requestNotificationPermission();
         if (!native.hasGoogleTts() && confirm("Máy chưa cài Google TTS (giọng chị Google).\nMở Google Play để cài?")) { native.installGoogleTts(); ttsEl.hidden = true; return; }

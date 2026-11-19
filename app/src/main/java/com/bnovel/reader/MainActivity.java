@@ -76,6 +76,7 @@ public class MainActivity extends Activity {
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setAllowFileAccess(false);
@@ -101,10 +102,18 @@ public class MainActivity extends Activity {
                 if (fileCb != null) { try { fileCb.onReceiveValue(null); } catch (Exception ignored) {} }
                 fileCb = cb;
                 try {
+                    String type = "*/*";
+                    String[] acc = p != null ? p.getAcceptTypes() : null;
+                    StringBuilder sb = new StringBuilder();
+                    if (acc != null) for (String t : acc) sb.append(t).append(',');
+                    String a = sb.toString().toLowerCase();
+                    if (a.contains("image")) type = "image/*";
+                    else if (a.contains("audio")) type = "audio/*";
                     Intent i = new Intent(Intent.ACTION_GET_CONTENT);
                     i.addCategory(Intent.CATEGORY_OPENABLE);
-                    i.setType("image/*");
-                    startActivityForResult(Intent.createChooser(i, "Chọn ảnh"), REQ_FILE);
+                    i.setType(type);
+                    if (p != null && p.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                    startActivityForResult(Intent.createChooser(i, "Chọn tệp"), REQ_FILE);
                 } catch (Exception e) { fileCb = null; cb.onReceiveValue(null); return false; }
                 return true;
             }
@@ -144,7 +153,13 @@ public class MainActivity extends Activity {
         super.onActivityResult(req, res, data);
         if (req == REQ_FILE && fileCb != null) {
             Uri[] r = null;
-            if (res == RESULT_OK && data != null && data.getData() != null) r = new Uri[]{ data.getData() };
+            if (res == RESULT_OK && data != null) {
+                if (data.getClipData() != null) {
+                    int n = data.getClipData().getItemCount();
+                    r = new Uri[n];
+                    for (int k = 0; k < n; k++) r[k] = data.getClipData().getItemAt(k).getUri();
+                } else if (data.getData() != null) r = new Uri[]{ data.getData() };
+            }
             fileCb.onReceiveValue(r);
             fileCb = null;
         }
@@ -246,6 +261,31 @@ public class MainActivity extends Activity {
                     int f = d.getSystemUiVisibility();
                     int m = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
                     d.setSystemUiVisibility(lightIcons ? (f | m) : (f & ~m));
+                } catch (Exception ignored) {}
+            });
+        }
+
+        // Chia sẻ văn bản (dùng cho sao lưu dữ liệu: lưu vào Drive, Keep, Zalo...)
+        @JavascriptInterface
+        public void shareText(final String title, final String text) {
+            runOnUiThread(() -> {
+                try {
+                    Intent s = new Intent(Intent.ACTION_SEND);
+                    s.setType("text/plain");
+                    s.putExtra(Intent.EXTRA_SUBJECT, title);
+                    s.putExtra(Intent.EXTRA_TEXT, text);
+                    startActivity(Intent.createChooser(s, title));
+                } catch (Exception ignored) {}
+            });
+        }
+
+        // Giữ màn hình sáng khi đang đọc
+        @JavascriptInterface
+        public void keepScreenOn(final boolean on) {
+            runOnUiThread(() -> {
+                try {
+                    if (on) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 } catch (Exception ignored) {}
             });
         }

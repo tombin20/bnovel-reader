@@ -1,4 +1,20 @@
 ## Có gì mới
+- **Giữ lâu một đoạn khi đọc:** hiện menu Nghe từ đây (đọc từ đúng câu đó), Đánh dấu / ghi chú, Sao chép đoạn
+- **Đánh dấu và ghi chú:** đoạn đã đánh dấu được tô nền nhẹ, xem lại ở Mục lục, tab Đánh dấu, chạm để nhảy tới đúng đoạn
+- **Tìm trong chương:** biểu tượng kính lúp ở thanh trên, tô sáng mọi kết quả, bấm ▲ ▼ để chuyển giữa các kết quả
+- **Tự cuộn** (chế độ cuộn dọc) với tốc độ chỉnh được, chạm vào màn hình là dừng; tự sang chương kế khi hết chương
+- **Lọc ánh sáng xanh** chống mỏi mắt, có thể tự bật từ 19h đến 6h
+- **Giữ màn hình sáng khi đọc** và **tắt chạm mép lật trang** để khỏi lật nhầm (bật tắt trong Cài đặt)
+- **Hẹn giờ thông minh:** Hết chương này, sau 2 hoặc 3 chương, ngoài các mốc theo phút
+- **Từ điển phát âm:** sửa cách đọc tên riêng (ví dụ Hikigaya=Hích-ki-ga-ya), chữ trên màn hình giữ nguyên
+- **Bỏ qua đoạn khi nghe:** theo từ khóa hoặc biểu thức chính quy (lời dịch giả, ghi chú, quảng cáo)
+- **Nhạc nền khi nghe:** chọn nhiều bài từ máy, phát lặp, chỉnh âm lượng, tự dừng khi dừng nghe
+- **Tủ sách:** ô tìm kiếm, sắp xếp (gần đây, tên, tiến độ), nhãn Đọc sau và Đã xong (giữ lâu một truyện để gắn)
+- **Tự tải trước chương sắp đọc** khi có Wi-Fi (2, 5 hoặc 10 chương) và nhớ tạm các chương đã đọc để đọc lại không cần mạng
+- **Mục tiêu đọc mỗi ngày** và chuỗi ngày liên tiếp trong tab Thống kê; nhắc khi đạt mục tiêu
+- Sao lưu và khôi phục nay gồm cả đánh dấu và nhãn tủ sách
+- **Đồng bộ thống kê thời gian đọc và nghe với tài khoản:** tự gộp khi đồng bộ (mỗi số lấy giá trị lớn hơn, không bao giờ mất hay cộng đôi), tự đẩy lên khi thoát app hoặc mỗi vài phút. Tab Thống kê hiện trạng thái đồng bộ. Cần máy chủ có /api/stats
+- **Sao lưu và khôi phục dữ liệu:** Cài đặt, mục Dữ liệu: sao lưu thống kê, lịch sử, truyện theo dõi, cài đặt ra file/Drive/Zalo, khôi phục khi cài lại app hoặc đổi máy
 - **Hình nền ứng dụng theo ảnh trong máy:** vào Cài đặt, mục Hình nền ứng dụng, chọn ảnh từ máy. App tự cắt vừa màn hình, làm mờ và phủ màu giao diện (độ phủ tự tính theo độ sáng và độ rối của ảnh) nên chữ và bìa truyện luôn rõ, dù chọn ảnh nào. Có thể chỉnh độ mờ, độ phủ hoặc xóa ảnh bất cứ lúc nào
 - **Kéo bảng nghe xuống để vừa nghe vừa đọc:** vuốt bảng điều khiển xuống để thu gọn, chỉ còn dòng đếm câu ở dưới; vuốt lên hoặc chạm dòng đó để mở lại. App nhớ trạng thái thu gọn
 - **Thêm font NVN Grand Hotel** (chữ viết tay), chọn trong Cài đặt đọc

@@ -433,3 +433,37 @@ html[data-bg] .chip:not(.on){background:var(--card)}
 .bgprev{flex:none;width:64px;height:112px;border-radius:12px;background:var(--bg) center/cover no-repeat;border:1px solid var(--line);display:grid;place-items:center;font-size:11px;color:var(--muted);text-align:center}
 .bgbtns{flex:1;display:flex;flex-direction:column;gap:8px;justify-content:center}
 .bgbtns .btn{width:100%}
+
+.stnote{margin:0 0 10px;font-size:12.5px;line-height:1.4}
+
+/* ===== v2.15: tính năng đọc/nghe/tủ sách ===== */
+.rtext,.hcols{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+p.bmk{background:linear-gradient(90deg,var(--accsoft),transparent 55%);border-radius:6px}
+.rwarm{position:absolute;inset:0;background:rgb(255,150,40);mix-blend-mode:multiply;opacity:0;pointer-events:none;z-index:2}
+.rtop #rsb{flex:none;width:44px;height:44px;display:grid;place-items:center;border-radius:12px}
+.rtop #rsb svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.rsearch{position:absolute;top:0;left:0;right:0;z-index:6;display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--bg);box-shadow:0 2px 14px rgba(0,0,0,.25)}
+.rsearch[hidden]{display:none}
+.rsearch input{flex:1;min-width:0;height:40px;border-radius:12px;padding:0 12px}
+.rsearch .scnt{font-size:12px;color:var(--muted);min-width:42px;text-align:center}
+.rsearch button{width:36px;height:40px;border-radius:10px;color:var(--rfg,var(--fg))}
+::highlight(sres){background-color:rgba(255,200,0,.45);color:inherit}
+::highlight(scur){background-color:rgba(255,120,0,.8);color:#000}
+.menu{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.menu button{text-align:left;padding:14px 16px;border-radius:14px;background:var(--card);font-size:15px;color:var(--rfg,var(--fg))}
+.back[data-theme] .menu button{color:var(--rfg,var(--fg))}
+.ch.bmi{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.ch.bmi>div{flex:1;min-width:0}.ch.bmi b{display:block;font-size:13px}.ch.bmi small{display:block;color:var(--muted);margin-top:2px;line-height:1.35}
+.ch.bmi em{display:block;font-style:normal;color:var(--accent);font-size:13px;margin-top:3px}
+.ch.bmi .x{width:32px;height:32px;flex:none;color:var(--muted)}
+#tsg{margin:4px 0 8px}
+textarea{width:100%;border-radius:12px;padding:10px 12px;background:var(--card);border:1px solid var(--line);color:var(--fg);font:inherit;resize:vertical}
+input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent);flex:none}
+.tts .tr4{display:flex;gap:8px}.tts .tr4 .btn{flex:1;padding:8px 6px;font-size:13px}
+.libhead{display:flex;gap:8px;margin-bottom:10px}.libhead input{flex:1;min-width:0;height:42px;border-radius:14px;padding:0 14px}.libhead select{width:auto;height:42px;border-radius:14px}
+.tg{position:absolute;left:6px;top:6px;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;background:var(--accent);color:var(--onacc)}
+.tg.done{background:#3a9d6e;color:#fff}
+.li .tg{position:static;margin-right:6px;flex:none}
+.goalc .gbar{height:10px;border-radius:6px;background:var(--line);overflow:hidden;margin:8px 0}.goalc .gbar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.goalc .tl{display:flex;justify-content:space-between;margin-bottom:8px}.goalc .chips{margin:0}
+.li.mus .t{flex:1}

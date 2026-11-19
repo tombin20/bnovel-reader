@@ -25,6 +25,7 @@ const ICON = {
   power: SV('<path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1011.4 0"/>'),
   voice: SV('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>'),
   gear: SV('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>'),
+  search: SV('<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>'),
   scrollV: SV('<path d="M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4"/>'),
   pageH: SV('<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>'),
   phones: SV('<path d="M4 15v-3a8 8 0 0116 0v3"/><rect x="3" y="14" width="4" height="6.5" rx="1.6"/><rect x="17" y="14" width="4" height="6.5" rx="1.6"/>'),
@@ -208,6 +209,55 @@ async function bgClear() { cfg.bg = null; saveCfg(); bgSrc = null; bgSig = ""; t
 window.__bgApply = () => { applyBg().catch(() => {}); };
 (async () => { if (cfg.bg && cfg.bg.on) { try { bgSrc = await chGet(BG_KEY); } catch {} if (!bgSrc) { cfg.bg = null; saveCfg(); } applyBg().catch(() => {}); } })();
 
+// ---------- Nhạc nền khi nghe ----------
+const music = (() => {
+  const au = new Audio(); au.preload = "auto";
+  let list = ls.get("music", []), cur = -1, url = "";
+  const save = () => ls.set("music", list);
+  const vol = () => { au.volume = Math.min(1, Math.max(0, cfg.musicVol == null ? 0.25 : cfg.musicVol)); };
+  async function playIdx(i, tries = 0) {
+    if (!list.length || tries > list.length) return;
+    cur = ((i % list.length) + list.length) % list.length;
+    let b = null; try { b = await chGet(list[cur].k); } catch {}
+    if (!b) { list.splice(cur, 1); save(); return playIdx(cur, tries + 1); }
+    const old = url; url = URL.createObjectURL(b); au.src = url; vol();
+    if (old) URL.revokeObjectURL(old);
+    try { await au.play(); } catch {}
+  }
+  au.onended = () => playIdx(cur + 1);
+  au.onerror = () => { if (list.length > 1) playIdx(cur + 1); };
+  return {
+    get list() { return list; },
+    on() { return !!cfg.musicOn && list.length > 0; },
+    start() { if (!this.on()) return; vol(); if (au.src && cur >= 0) { if (au.paused) au.play().catch(() => {}); } else playIdx(0); },
+    pause() { try { au.pause(); } catch {} },
+    setVol() { vol(); },
+    async add(files) {
+      for (const f of files) { const k = "mus:" + Date.now() + "_" + Math.random().toString(36).slice(2, 7); await chPut(k, f); list.push({ k, name: (f.name || "Bài nhạc").replace(/\.[^.]+$/, "") }); }
+      save();
+    },
+    async remove(i) { const x = list[i]; if (!x) return; try { await chDel(x.k); } catch {} list.splice(i, 1); save(); if (i === cur) { au.pause(); au.removeAttribute("src"); cur = -1; } else if (i < cur) cur--; }
+  };
+})();
+function openMusic(theme) {
+  const draw = () => {
+    s.innerHTML = `<div class="set"><h3>Nhạc nền</h3>
+      <div class="r"><label>Phát nhạc nền khi nghe truyện</label><input type="checkbox" id="mon" ${cfg.musicOn ? "checked" : ""}></div>
+      <div class="r"><label>Âm lượng: <span id="mvv">${Math.round((cfg.musicVol == null ? 0.25 : cfg.musicVol) * 100)}%</span></label><input id="mv" type="range" min="0" max="100" value="${Math.round((cfg.musicVol == null ? 0.25 : cfg.musicVol) * 100)}"></div>
+      ${music.list.length ? music.list.map((m, i) => `<div class="li mus"><div class="t"><b>${esc(m.name)}</b></div><button class="x" data-mx="${i}">✕</button></div>`).join("") : `<p class="empty">Chưa có bài nhạc nào</p>`}
+      <div class="r"><button class="btn solid" id="madd">+ Chọn nhạc từ máy</button></div>
+      <input type="file" id="mf" accept="audio/*" multiple hidden>
+      <p class="muted">Nhạc phát lặp lại, tự dừng khi bạn dừng nghe. Nên chọn nhạc không lời.</p></div>`;
+    $("#mon", s).onchange = e => { cfg.musicOn = e.target.checked; saveCfg(); };
+    $("#mv", s).oninput = e => { cfg.musicVol = +e.target.value / 100; $("#mvv", s).textContent = e.target.value + "%"; music.setVol(); };
+    $("#mv", s).onchange = () => saveCfg();
+    $$("[data-mx]", s).forEach(b => b.onclick = async () => { await music.remove(+b.dataset.mx); draw(); });
+    $("#madd", s).onclick = () => $("#mf", s).click();
+    $("#mf", s).onchange = async e => { const fs = [...(e.target.files || [])]; if (!fs.length) return; toast("Đang thêm nhạc..."); try { await music.add(fs); if (!cfg.musicOn) { cfg.musicOn = true; saveCfg(); } } catch { toast("Không thêm được"); } draw(); };
+  };
+  const s = openSheet(""); if (theme) sheetEl.dataset.theme = theme; draw();
+}
+
 // ---------- Dữ liệu truyện ----------
 let storiesCache = null;
 async function stories() {
@@ -225,10 +275,21 @@ async function getChapter(sid, pos) {
   const k = sid + ":" + pos;
   if (memo[k]) return memo[k];
   try { const c = await chGet(k); if (c) return c; } catch {}
+  try { const c = await chGet("pf:" + k); if (c) { memo[k] = c; return c; } } catch {}
   if (window.AndroidDl) { try { const t = window.AndroidDl.readChapter(+sid, +pos); if (t) return JSON.parse(t); } catch {} }
   const c = (await api(`/api/chapter?story=${sid}&pos=${pos}`)).chapter;
-  memo[k] = c; return c;
+  memo[k] = c; cachePf(k, c); return c;
 }
+// lưu tạm các chương đã đọc / tải trước để đọc lại không cần mạng (giữ tối đa 80 chương gần nhất)
+async function cachePf(k, c) {
+  try {
+    const key = "pf:" + k; await chPut(key, c);
+    const l = ls.get("pfk", []).filter(x => x !== key); l.push(key);
+    while (l.length > 80) { const o = l.shift(); try { await chDel(o); } catch {} }
+    ls.set("pfk", l);
+  } catch {}
+}
+const wifiOk = () => { const c = navigator.connection; if (!c) return true; if (c.saveData) return false; return c.type ? (c.type === "wifi" || c.type === "ethernet") : true; };
 const IMG_RE = /^!\[\]\((.+)\)$/;
 const renderContent = text => String(text || "").split(/\n+/).map(l => l.trim()).filter(Boolean).map((l, i) => {
   const m = l.match(IMG_RE);
@@ -238,7 +299,7 @@ const imgsOf = text => String(text || "").split(/\n+/).map(l => (l.trim().match(
 
 // ---------- Thống kê thời gian ----------
 const dayKey = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
-let statDirty = false;
+let statDirty = false, statSyncDirty = false, statsErr = "";
 // kind: 0 = đọc (không bấm nghe), 1 = nghe
 function addTime(story, kind, sec) {
   if (!(sec > 0)) return;
@@ -246,10 +307,41 @@ function addTime(story, kind, sec) {
   s.title = story.title; s.cover = story.cover;
   if (kind) s.l += sec; else s.r += sec;
   const d = days[dayKey()] || (days[dayKey()] = [0, 0]); d[kind] += sec;
-  statDirty = true;
+  statDirty = true; statSyncDirty = true; goalCheck();
 }
 setInterval(() => { if (statDirty) { statDirty = false; ls.set("stats", stats); ls.set("days", days); } }, 5000);
-document.addEventListener("visibilitychange", () => { if (document.hidden && statDirty) { statDirty = false; ls.set("stats", stats); ls.set("days", days); } });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && statDirty) { statDirty = false; ls.set("stats", stats); ls.set("days", days); }
+  if (document.hidden && acct && statSyncDirty) { statSyncDirty = false; syncStats(); }
+});
+setInterval(() => { if (acct && statSyncDirty && !document.hidden) { statSyncDirty = false; syncStats(); } }, 300000);
+// Gộp thống kê từ nơi khác vào máy này: mỗi số lấy giá trị LỚN HƠN (không bao giờ làm mất hay cộng đôi thời gian)
+function mergeStats(sv, dv) {
+  let ch = false;
+  for (const [id, x] of Object.entries(sv || {})) {
+    const l = stats[id], r = +x.r || 0, li = +x.l || 0;
+    if (!l) { stats[id] = { title: x.title || "", cover: x.cover || "", r, l: li }; ch = true; continue; }
+    if (r > l.r) { l.r = r; ch = true; } if (li > l.l) { l.l = li; ch = true; }
+    if (!l.title && x.title) { l.title = x.title; l.cover = x.cover || l.cover; ch = true; }
+  }
+  for (const [k, v] of Object.entries(dv || {})) {
+    const l = days[k], a = +v[0] || 0, b = +v[1] || 0;
+    if (!l) { days[k] = [a, b]; ch = true; continue; }
+    if (a > l[0]) { l[0] = a; ch = true; } if (b > l[1]) { l[1] = b; ch = true; }
+  }
+  if (ch) { ls.set("stats", stats); ls.set("days", days); }
+  return ch;
+}
+// Đồng bộ thống kê với tài khoản (máy chủ cần có GET/PUT /api/stats)
+async function syncStats() {
+  if (!acct) return;
+  try {
+    const r = await api("/api/stats", "GET", null, true);
+    mergeStats(r.stats, r.days);
+    await api("/api/stats", "PUT", { stats, days }, true);
+    ls.set("statsSync", Date.now()); statsErr = "";
+  } catch (e) { statsErr = (e.status === 404 || e.status === 405) ? "nosrv" : (e.message || "lỗi"); }
+}
 const fmt = sec => { if (sec < 60) return Math.round(sec) + "s"; const m = Math.round(sec / 60), hh = Math.floor(m / 60); return hh ? `${hh}h ${m % 60}m` : `${m}m`; };
 
 // ---------- Đồng bộ tài khoản web ----------
@@ -288,12 +380,67 @@ async function sync(manual) {
     }
     for (const l of Object.values(hist)) if (!shIds.has(l.id)) api("/api/history", "PUT", { story: l.id, pos: l.pos }, true).catch(() => {});
     ls.set("hist", hist);
-    if (manual) toast("Đã đồng bộ với tài khoản " + acct.user.name);
+    await syncStats();
+    if (manual) toast(statsErr === "nosrv" ? "Đã đồng bộ truyện. Máy chủ chưa hỗ trợ đồng bộ thống kê" : statsErr ? "Đã đồng bộ truyện, thống kê lỗi: " + statsErr : "Đã đồng bộ với tài khoản " + acct.user.name);
     if (tab === "lib" && !stack.length) renderLib(); else if (tab === "set" && !stack.length) renderSettings();
   } catch (e) { if (manual) toast("Đồng bộ lỗi: " + e.message); }
   finally { syncing = false; setSyncIcon(false); }
 }
 function setSyncIcon(on) { const b = $("#syncb"); if (b) b.classList.toggle("spin", on); }
+
+// ---------- Mục tiêu đọc mỗi ngày + chuỗi ngày ----------
+const keyOf = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const dayTotal = k => { const d = days[k]; return d ? d[0] + d[1] : 0; };
+function goalCheck() {
+  const g = +cfg.goal; if (!g) return; const k = dayKey();
+  if (ls.get("goalHit", "") === k) return;
+  if (dayTotal(k) >= g * 60) { ls.set("goalHit", k); toast("🎯 Đạt mục tiêu hôm nay!"); }
+}
+function streak() {
+  const need = (+cfg.goal || 1) * 60, d = new Date(); let n = 0;
+  if (dayTotal(keyOf(d)) < need) d.setDate(d.getDate() - 1);
+  while (dayTotal(keyOf(d)) >= need && n < 3650) { n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+
+// ---------- Sách nói: bỏ qua đoạn + từ điển phát âm ----------
+function skipFn() {
+  const rs = (cfg.skip || "").split("\n").map(x => x.trim()).filter(Boolean).map(l => {
+    if (/^re:/i.test(l)) { try { return { re: new RegExp(l.slice(3), "i") }; } catch { return null; } }
+    return { s: l.toLowerCase() };
+  }).filter(Boolean);
+  return t => { const lo = t.toLowerCase(); return rs.some(r => r.re ? r.re.test(t) : lo.includes(r.s)); };
+}
+function pronFn() {
+  const pairs = (cfg.pron || "").split("\n").map(l => { const i = l.indexOf("="); return i > 0 ? [l.slice(0, i).trim(), l.slice(i + 1).trim()] : null; }).filter(x => x && x[0]).sort((a, b) => b[0].length - a[0].length);
+  if (!pairs.length) return t => t;
+  const re = new RegExp("(?<![\\p{L}\\p{N}])(" + pairs.map(x => x[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(?![\\p{L}\\p{N}])", "giu");
+  const map = new Map(pairs.map(x => [x[0].toLowerCase(), x[1]]));
+  return t => t.replace(re, m => { const v = map.get(m.toLowerCase()); return v == null ? m : v; });
+}
+function openTtsRules(theme) {
+  const s = openSheet(`<div class="set"><h3>Phát âm & bỏ qua đoạn</h3>
+    <div class="stp"><label>Từ điển phát âm</label></div>
+    <p class="muted">Mỗi dòng: <b>từ=cách đọc</b>. Chỉ đổi giọng đọc, chữ trên màn hình giữ nguyên.</p>
+    <textarea id="pr" rows="6" placeholder="Hikigaya=Hích-ki-ga-ya&#10;Yukinoshita=Du-ki-nô-si-ta">${esc(cfg.pron || "")}</textarea>
+    <div class="stp"><label>Bỏ qua đoạn chứa</label></div>
+    <p class="muted">Mỗi dòng một cụm từ (ví dụ: dịch giả, nguồn:). Bắt đầu bằng <b>re:</b> để dùng biểu thức chính quy.</p>
+    <textarea id="sk" rows="5" placeholder="dịch giả&#10;re:^\\[Ghi chú.*\\]$">${esc(cfg.skip || "")}</textarea>
+    <div class="r"><button class="btn solid" id="prok">Lưu</button></div></div>`);
+  if (theme) sheetEl.dataset.theme = theme;
+  $("#prok", s).onclick = () => { cfg.pron = $("#pr", s).value.trim(); cfg.skip = $("#sk", s).value.trim(); saveCfg(); closeSheet(); if (window.__ttsRules) window.__ttsRules(); toast("Đã lưu"); };
+}
+
+// ---------- Đánh dấu / ghi chú, nhãn tủ sách ----------
+let bm = ls.get("bm", {});                 // {sid:[{pos,ct,p,txt,note,t}]}
+const saveBm = () => ls.set("bm", bm);
+let tags = ls.get("tags", {});             // {sid:{k:"later"|"done",title,cover,chapters}}
+const TAGN = { later: "Đọc sau", done: "Đã xong" };
+function copyText(t) {
+  const fb = () => { const a = document.createElement("textarea"); a.value = t; a.style.cssText = "position:fixed;opacity:0"; document.body.append(a); a.select(); try { document.execCommand("copy"); } catch {} a.remove(); };
+  try { if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t).catch(fb); } catch {}
+  fb();
+}
 
 // ---------- Điều hướng ----------
 const app = $("#app"), view = $("#view");
@@ -356,13 +503,13 @@ app.addEventListener("click", e => {
 });
 
 const card = (s, mode) => `<button class="card" ${mode === "resume" ? `data-resume="${s.id}"` : `data-id="${s.id}"`}><div class="cvw"><img class="cv" loading="lazy" src="${esc(img(s.cover, 400))}" alt="">
-  <span class="bd">${fav.some(f => f.id === s.id) ? "♥" : ""}${dl[s.id] ? "⬇" : ""}</span></div><b>${esc(s.title)}</b>
+  <span class="bd">${fav.some(f => f.id === s.id) ? "♥" : ""}${dl[s.id] ? "⬇" : ""}</span>${tags[s.id] ? `<span class="tg ${tags[s.id].k}">${TAGN[tags[s.id].k]}</span>` : ""}</div><b>${esc(s.title)}</b>
   <small>${esc(s.ct || (s.chapters ? s.chapters + " chương" : ""))}</small></button>`;
 const grid = (l, mode) => l.map(s => card(s, mode)).join("");
 const skel = (n = 9) => Array.from({ length: n }, () => `<div class="card sk"><div class="cvw"><div class="cv"></div></div><b></b><small></small></div>`).join("");
 
 // ---------- Tủ sách (trang chủ) ----------
-let libTab = "all";
+let libTab = "all", libQ = "", libSort = "recent";
 function shelf() {
   const m = new Map();
   fav.forEach(f => m.set(f.id, { id: f.id, title: f.title, cover: f.cover, chapters: f.chapters, t: 0 }));
@@ -370,28 +517,66 @@ function shelf() {
   Object.values(dl).forEach(d => { if (!m.has(d.story.id)) m.set(d.story.id, { id: d.story.id, title: d.story.title, cover: d.story.cover, t: 0 }); });
   return [...m.values()].sort((a, b) => b.t - a.t);
 }
+const progOf = x => { const h = hist[x.id], n = x.chapters || (dl[x.id] && dl[x.id].chapters.length) || 0; return h && n ? h.pos / n : 0; };
+const tOf = x => (x.t != null ? x.t : (hist[x.id] ? hist[x.id].t : 0));
+function libSortL(l, keepOrder) {          // lọc theo ô tìm kiếm + sắp xếp
+  const q = norm(libQ); const r = q ? l.filter(x => norm(x.title).includes(q)) : l.slice();
+  if (libSort === "name") r.sort((a, b) => String(a.title).localeCompare(String(b.title), "vi"));
+  else if (libSort === "prog") r.sort((a, b) => progOf(b) - progOf(a));
+  else if (!keepOrder) r.sort((a, b) => tOf(b) - tOf(a));
+  return r;
+}
+function openTagMenu(id) {
+  const x = shelf().find(v => v.id === id) || tags[id]; if (!x) return;
+  const cur = tags[id] ? tags[id].k : "";
+  const sh = openSheet(`<h3>${esc(x.title)}</h3><div class="menu">
+    <button data-k="later">${cur === "later" ? "✓ " : ""}Đọc sau</button><button data-k="done">${cur === "done" ? "✓ " : ""}Đã đọc xong</button>
+    ${cur ? `<button data-k="none">Bỏ nhãn</button>` : ""}<button data-k="open">Mở truyện</button></div>`);
+  $$("[data-k]", sh).forEach(b => b.onclick = () => {
+    const k = b.dataset.k; closeSheet();
+    if (k === "open") return openStory(id);
+    if (k === "none") delete tags[id]; else tags[id] = { k, title: x.title, cover: x.cover, chapters: x.chapters };
+    ls.set("tags", tags); renderLib();
+  });
+}
 function renderLib() {
-  const tabs = [["all", "Tất cả"], ["hist", "Đang đọc"], ["fav", "Theo dõi"], ["dl", "Đã tải"]];
-  let body = "";
+  const tabs = [["all", "Tất cả"], ["hist", "Đang đọc"], ["fav", "Theo dõi"], ["dl", "Đã tải"], ["later", "Đọc sau"], ["done", "Đã xong"]];
   const empty = `<p class="empty">Kệ sách còn trống.<br>Qua tab <b>Khám phá</b> để chọn truyện, bấm ♡ để thêm vào đây.</p>`;
-  if (libTab === "all") { const l = shelf(); body = l.length ? `<div class="grid">${grid(l)}</div>` : empty; }
-  if (libTab === "fav") body = fav.length ? `<div class="grid">${grid(fav)}</div>` : `<p class="empty">Chưa theo dõi truyện nào</p>`;
-  if (libTab === "hist") {
-    const l = Object.values(hist).sort((a, b) => b.t - a.t);
-    body = l.length ? l.map(s => `<div class="li" data-resume="${s.id}"><img src="${esc(img(s.cover, 400))}" alt=""><div class="t"><b>${esc(s.title)}</b><small>${esc(s.ct || "")}</small></div><button class="x" data-del="${s.id}">✕</button></div>`).join("") : `<p class="empty">Chưa có lịch sử đọc</p>`;
-  }
-  if (libTab === "dl") {
-    const l = Object.values(dl);
-    body = l.length ? l.map(d => `<div class="li" data-id="${d.story.id}"><img src="${esc(img(d.story.cover, 400))}" alt=""><div class="t"><b>${esc(d.story.title)}</b><small>${d.have.length}/${d.chapters.length} chương</small></div><button class="x" data-del="${d.story.id}">🗑</button></div>`).join("") : `<p class="empty">Chưa tải truyện nào.<br>Mở truyện rồi bấm ⬇ để đọc offline (cả chữ lẫn ảnh).</p>`;
-  }
-  view.innerHTML = `<div class="chips" style="margin-bottom:12px">${tabs.map(([k, n]) => `<button class="chip ${k === libTab ? "on" : ""}" data-lt="${k}">${n}</button>`).join("")}</div>${body}`;
-  $$("[data-lt]", view).forEach(b => b.onclick = () => { libTab = b.dataset.lt; renderLib(); });
-  $$("[data-del]", view).forEach(b => b.onclick = async e => {
+  const noMatch = `<p class="empty">Không tìm thấy truyện nào</p>`;
+  const rows = (l, delIcon, getS, sub) => l.map(x => { const st = getS(x); return `<div class="li" ${libTab === "dl" ? `data-id="${st.id}"` : `data-resume="${st.id}"`}><img src="${esc(img(st.cover, 400))}" alt=""><div class="t"><b>${esc(st.title)}</b><small>${esc(sub(x))}</small></div>${tags[st.id] ? `<span class="tg ${tags[st.id].k}">${TAGN[tags[st.id].k]}</span>` : ""}<button class="x" data-del="${st.id}">${delIcon}</button></div>`; }).join("");
+  const bodyHtml = () => {
+    if (libTab === "all") { const l = libSortL(shelf()); return l.length ? `<div class="grid">${grid(l)}</div>` : (libQ ? noMatch : empty); }
+    if (libTab === "fav") { const l = libSortL(fav, true); return l.length ? `<div class="grid">${grid(l)}</div>` : (libQ ? noMatch : `<p class="empty">Chưa theo dõi truyện nào</p>`); }
+    if (libTab === "hist") { const l = libSortL(Object.values(hist)); return l.length ? rows(l, "✕", x => x, x => x.ct || "") : (libQ ? noMatch : `<p class="empty">Chưa có lịch sử đọc</p>`); }
+    if (libTab === "dl") { const l = libSortL(Object.values(dl).map(d => ({ id: d.story.id, title: d.story.title, cover: d.story.cover, chapters: d.chapters.length, d }))); return l.length ? rows(l, "🗑", x => x, x => `${x.d.have.length}/${x.d.chapters.length} chương`) : (libQ ? noMatch : `<p class="empty">Chưa tải truyện nào.<br>Mở truyện rồi bấm ⬇ để đọc offline (cả chữ lẫn ảnh).</p>`); }
+    const k = libTab, l = libSortL(Object.entries(tags).filter(([, v]) => v.k === k).map(([id, v]) => ({ id: +id, title: v.title, cover: v.cover, chapters: v.chapters, ct: hist[id] ? hist[id].ct : "" })));
+    return l.length ? `<div class="grid">${grid(l)}</div>` : (libQ ? noMatch : `<p class="empty">Chưa có truyện nào.<br>Giữ lâu một truyện để gắn nhãn “${TAGN[k]}”.</p>`);
+  };
+  view.innerHTML = `<div class="libhead"><input id="libq" type="search" placeholder="Tìm trong tủ sách" value="${esc(libQ)}"><select id="libs"><option value="recent">Gần đây</option><option value="name">Tên A→Z</option><option value="prog">Tiến độ</option></select></div>
+    <div class="chips" style="margin-bottom:12px">${tabs.map(([k, n]) => `<button class="chip ${k === libTab ? "on" : ""}" data-lt="${k}">${n}</button>`).join("")}</div><div id="libbody">${bodyHtml()}</div>`;
+  $("#libs").value = libSort;
+  const bindBody = () => $$("[data-del]", view).forEach(b => b.onclick = async e => {
     e.stopPropagation(); const id = +b.dataset.del;
     if (libTab === "hist") { delete hist[id]; ls.set("hist", hist); if (acct) pushOp("DELETE", "/api/history?story=" + id); }
     if (libTab === "dl") { if (!confirm("Xóa các chương đã tải của truyện này?")) return; await deleteDl(id); }
     renderLib();
   });
+  bindBody();
+  let qT; $("#libq").oninput = e => { libQ = e.target.value; clearTimeout(qT); qT = setTimeout(() => { $("#libbody").innerHTML = bodyHtml(); bindBody(); }, 120); };
+  $("#libs").onchange = e => { libSort = e.target.value; renderLib(); };
+  $$("[data-lt]", view).forEach(b => b.onclick = () => { libTab = b.dataset.lt; renderLib(); });
+  if (!view._lp) {                       // giữ lâu một truyện: gắn nhãn
+    view._lp = 1; let t = 0, pt = null;
+    view.addEventListener("touchstart", e => {
+      const c = e.target.closest(".card,.li"); if (!c || tab !== "lib" || e.touches.length !== 1) return;
+      const id = +(c.dataset.id || c.dataset.resume); if (!id) return; pt = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      clearTimeout(t); t = setTimeout(() => { if (!pt) return; view._lpAt = Date.now(); if (navigator.vibrate) navigator.vibrate(15); openTagMenu(id); }, 550);
+    }, { passive: true });
+    view.addEventListener("touchmove", e => { if (pt && Math.hypot(e.touches[0].clientX - pt.x, e.touches[0].clientY - pt.y) > 10) { clearTimeout(t); pt = null; } }, { passive: true });
+    ["touchend", "touchcancel"].forEach(ev => view.addEventListener(ev, () => { clearTimeout(t); pt = null; }, { passive: true }));
+    view.addEventListener("contextmenu", e => { if (e.target.closest(".card,.li")) e.preventDefault(); });
+    view.addEventListener("click", e => { if (Date.now() - (view._lpAt || 0) < 700) { e.stopPropagation(); e.preventDefault(); } }, true);
+  }
 }
 async function deleteDl(id) {
   const d = dl[id]; if (!d) return;
@@ -442,7 +627,13 @@ function renderStats() {
   const mx = Math.max(60, ...last.map(([, v]) => v[0] + v[1]));
   const sorted = list.filter(s => s[statSort] > 0).sort((a, b) => b[statSort] - a[statSort]);
   const top = Math.max(1, ...sorted.map(s => s.t));
-  view.innerHTML = `<div class="stc"><div class="sth">Tổng</div><div class="stbig">${fmt(T)} <small>Tổng thời gian</small></div>
+  const ss = ls.get("statsSync", 0), hhmm = ss ? new Date(ss).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : "";
+  const note = !acct ? "Thống kê chỉ lưu trên máy này. Liên kết tài khoản (Cài đặt) hoặc dùng Sao lưu để không bị mất khi cài lại app."
+    : statsErr === "nosrv" ? "Máy chủ chưa hỗ trợ đồng bộ thống kê, hãy dùng Sao lưu trong Cài đặt."
+    : ss ? "Đã đồng bộ với tài khoản · " + hhmm : "Chưa đồng bộ, bấm nút đồng bộ ở Cài đặt.";
+  const gm = +cfg.goal || 0, tdS = td[0] + td[1], gp = gm ? Math.min(100, tdS / (gm * 60) * 100) : 0, stk = streak();
+  const goalCard = `<div class="stc goalc"><div class="sth">Mục tiêu mỗi ngày</div>${gm ? `<div class="gbar"><i style="width:${gp}%"></i></div>` : ""}<div class="tl"><small>${gm ? fmt(tdS) + " / " + gm + " phút" : "Chưa đặt mục tiêu"}</small><small>🔥 ${stk} ngày liên tiếp</small></div><div class="chips">${[0, 10, 20, 30, 60].map(m => `<button class="chip ${gm === m ? "on" : ""}" data-goal="${m}">${m ? m + " phút" : "Tắt"}</button>`).join("")}</div></div>`;
+  view.innerHTML = `<p class="muted stnote">${esc(note)}</p>${goalCard}<div class="stc"><div class="sth">Tổng</div><div class="stbig">${fmt(T)} <small>Tổng thời gian</small></div>
     <div class="stbar"><i class="r" style="flex:${R || 0.0001}"></i><i class="l" style="flex:${L || 0.0001}"></i></div>
     <div class="stleg"><span><i class="dot r"></i>Đọc<br><b>${fmt(R)}</b></span><span style="text-align:right"><i class="dot l"></i>Nghe<br><b>${fmt(L)}</b></span></div></div>
     <div class="stc"><div class="sth">Hôm nay: đọc ${fmt(td[0])} · nghe ${fmt(td[1])}</div>
@@ -452,6 +643,7 @@ function renderStats() {
       <div class="tl"><small>Đọc ${fmt(s.r)}</small><small>Nghe ${fmt(s.l)}</small></div>
       <div class="stbar sm" style="width:${s.t / top * 100}%"><i class="r" style="flex:${s.r || 0.0001}"></i><i class="l" style="flex:${s.l || 0.0001}"></i></div></div></div>`).join("") : `<p class="empty">Chưa có dữ liệu.<br>Thời gian đọc và nghe sẽ được ghi lại khi bạn dùng app.</p>`}`;
   $$("[data-s]", view).forEach(b => b.onclick = () => { statSort = b.dataset.s; renderStats(); });
+  $$("[data-goal]", view).forEach(b => b.onclick = () => { cfg.goal = +b.dataset.goal; saveCfg(); renderStats(); });
 }
 
 // ---------- Cài đặt ----------
@@ -478,19 +670,54 @@ function renderSettings() {
     <div class="r"><label>Cỡ chữ: <span id="sv">${cfg.size}</span>px</label><input id="sz" type="range" min="14" max="30" value="${cfg.size}"></div>
     <div class="r"><label>Giãn dòng: <span id="lv">${cfg.lh}</span></label><input id="lh" type="range" min="1.4" max="2.4" step="0.1" value="${cfg.lh}"></div>
     <div class="r"><label>Font</label><select id="fn">${fontOpts()}</select></div>
+    <h4>Đọc</h4>
+    <div class="r"><label>Giữ màn hình sáng khi đọc</label><input type="checkbox" id="cawk" ${cfg.awake !== false ? "checked" : ""}></div>
+    <div class="r"><label>Chạm mép để lật trang (vuốt ngang)</label><input type="checkbox" id="cedg" ${cfg.edge !== false ? "checked" : ""}></div>
+    <div class="r"><label>Tự tải trước chương sắp đọc (khi có Wi-Fi)</label><select id="cpf"><option value="0">Tắt</option><option value="2">2 chương</option><option value="5">5 chương</option><option value="10">10 chương</option></select></div>
     <h4>Sách nói</h4>
+    <div class="r"><button class="btn" id="ttsrules">Phát âm & bỏ qua đoạn</button><button class="btn" id="musbtn">Nhạc nền</button></div>
     <div class="r"><label>Tốc độ mặc định: <span id="rv">${fmtRate(cfg.rate)}</span></label><input id="rt" type="range" min="0.1" max="2" step="0.01" value="${cfg.rate}"></div>
     ${native ? `<div class="r"><button class="btn" id="ttsset">Cài đặt giọng nói của máy</button></div>` : ""}
     <h4>Máy chủ</h4>
     <div class="r"><input id="bs" style="flex:1" value="${esc(cfg.base)}"></div>
     <div class="r"><button class="btn" id="bsok">Lưu địa chỉ</button><button class="btn" id="bsrs">Mặc định</button></div>
     <h4>Dữ liệu</h4>
+    <div class="r"><button class="btn solid" id="bkexp">Sao lưu dữ liệu</button><button class="btn" id="bkimp">Khôi phục từ file</button></div>
+    <input type="file" id="bkf" accept=".json,application/json,text/plain" hidden>
+    <p class="muted">Sao lưu gồm thống kê thời gian, lịch sử, truyện theo dõi và cài đặt. Lưu vào Drive/Zalo/Keep để khôi phục khi cài lại app hoặc đổi máy.</p>
     <div class="r"><button class="btn danger" id="clr">Xóa toàn bộ truyện đã tải</button></div>
     <div class="r"><button class="btn danger" id="clrst">Xóa thống kê</button></div>
     <h4>Ứng dụng</h4>
     <div class="r"><label>Phiên bản: <b>${esc(APP_VER || "web")}</b></label>${native ? `<button class="btn" id="chkupd">Kiểm tra cập nhật</button>` : ""}</div>
     <p class="empty">B-novel Reader</p></div>`;
   $("#fn").value = cfg.font; $("#md").value = cfg.mode;
+  $("#cawk").onchange = e => { cfg.awake = e.target.checked; saveCfg(); };
+  $("#cedg").onchange = e => { cfg.edge = e.target.checked; saveCfg(); };
+  $("#cpf").value = String(cfg.prefetch || 0); $("#cpf").onchange = e => { cfg.prefetch = +e.target.value; saveCfg(); };
+  $("#ttsrules").onclick = () => openTtsRules(); $("#musbtn").onclick = () => openMusic();
+  $("#bkexp").onclick = () => {
+    const c = Object.assign({}, cfg); delete c.bg;
+    const txt = JSON.stringify({ app: "bnovel-reader", v: 1, t: Date.now(), cfg: c, fav, hist, stats, days, bm, tags });
+    if (native && window.AndroidApp && AndroidApp.shareText) AndroidApp.shareText("Sao lưu B-novel Reader", txt);
+    else { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "application/json" })); a.download = "bnovel-backup.json"; a.click(); }
+    try { navigator.clipboard && navigator.clipboard.writeText(txt); } catch {}
+  };
+  $("#bkimp").onclick = () => $("#bkf").click();
+  $("#bkf").onchange = async e => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    try {
+      const o = JSON.parse(await f.text()); if (o.app !== "bnovel-reader") throw 0;
+      mergeStats(o.stats, o.days);
+      for (const x of Object.values(o.hist || {})) { const l = hist[x.id]; if (!l || x.t > l.t) hist[x.id] = x; }
+      const ids = new Set(fav.map(x => x.id)); for (const x of o.fav || []) if (!ids.has(x.id)) fav.push(x);
+      ls.set("hist", hist); ls.set("fav", fav);
+      for (const [sid, arr] of Object.entries(o.bm || {})) { const cur = bm[sid] || (bm[sid] = []); for (const b of arr) if (!cur.some(c => c.pos === b.pos && c.p === b.p)) cur.push(b); }
+      saveBm(); Object.assign(tags, o.tags || {}, tags); ls.set("tags", tags);
+      if (o.cfg) { const keep = { base: cfg.base, bg: cfg.bg }; Object.assign(cfg, o.cfg, keep); saveCfg(); applyTheme(); }
+      toast("Đã khôi phục dữ liệu"); renderSettings();
+      if (acct) syncStats();
+    } catch { toast("File sao lưu không hợp lệ"); }
+  };
   $("#bgpick").onclick = () => $("#bgf").click();
   $("#bgf").onchange = async e => {
     const f = e.target.files && e.target.files[0]; if (!f) return;
@@ -528,7 +755,7 @@ function renderSettings() {
   $("#bsok").onclick = () => { cfg.base = $("#bs").value.trim().replace(/\/+$/, "") || BASE0; saveCfg(); storiesCache = null; toast("Đã lưu"); };
   $("#bsrs").onclick = () => { cfg.base = BASE0; saveCfg(); storiesCache = null; renderSettings(); };
   $("#clr").onclick = async () => { if (!confirm("Xóa toàn bộ truyện đã tải (chữ và ảnh)?")) return; for (const id of Object.keys(dl)) await deleteDl(id); toast("Đã xóa"); };
-  $("#clrst").onclick = () => { if (!confirm("Xóa toàn bộ thống kê?")) return; stats = {}; days = {}; ls.set("stats", stats); ls.set("days", days); toast("Đã xóa"); };
+  $("#clrst").onclick = () => { if (!confirm("Xóa toàn bộ thống kê?")) return; stats = {}; days = {}; ls.set("stats", stats); ls.set("days", days); if (acct) pushOp("PUT", "/api/stats", { stats: {}, days: {} }); toast("Đã xóa"); };
 }
 
 // ---------- Chi tiết truyện ----------
@@ -683,14 +910,15 @@ async function resume(id) {
 function openReader(story, toc, startIdx, startP) {
   if (bg) closeBg();
   const el = push(h(`<div class="rd hide" data-theme="${rKey()}">
-    <div class="rtop bar"><button class="bk" aria-label="Quay lại">${ICON.back}</button><b class="rt"></b></div>
+    <div class="rtop bar"><button class="bk" aria-label="Quay lại">${ICON.back}</button><b class="rt"></b><button id="rsb" aria-label="Tìm trong chương">${ICON.search}</button></div>
+    <div class="rsearch" hidden><input type="search" placeholder="Tìm trong chương" enterkeyhint="search"><span class="scnt"></span><button class="sp" aria-label="Trước">▲</button><button class="sn" aria-label="Sau">▼</button><button class="sx" aria-label="Đóng">✕</button></div>
     <div class="rscroll"></div><div class="pgnum" hidden><span class="pgl"></span><span class="pgr"></span></div><div class="rhead"></div>
-    <div class="rdim"></div>
+    <div class="rdim"></div><div class="rwarm"></div>
     <div class="tts" hidden>
       <div class="grab" aria-label="Kéo xuống để thu gọn"></div>
       <div class="tr tmain"><button id="tpc" aria-label="Chương trước">${ICON.skipPrev}</button><button id="tp" aria-label="Câu trước">${ICON.rew}</button><button id="tpl" class="pl" aria-label="Phát/Dừng">${ICON.play}</button><button id="tn" aria-label="Câu sau">${ICON.fwd}</button><button id="tnc" aria-label="Chương sau">${ICON.skipNext}</button></div>
       <div class="tr topt">
-        <label class="tsel" aria-label="Hẹn giờ tắt">${ICON.timer}<span id="tsl">Hẹn giờ</span><select id="ts"><option value="0">Tắt hẹn giờ</option><option value="15">15 phút</option><option value="30">30 phút</option><option value="60">60 phút</option><option value="90">90 phút</option></select></label>
+        <label class="tsel" aria-label="Hẹn giờ tắt">${ICON.timer}<span id="tsl">Hẹn giờ</span><select id="ts"><option value="0">Tắt hẹn giờ</option><option value="15">15 phút</option><option value="30">30 phút</option><option value="60">60 phút</option><option value="90">90 phút</option><option value="c1">Hết chương này</option><option value="c2">Sau 2 chương</option><option value="c3">Sau 3 chương</option></select></label>
         <button id="tspd" class="spd" aria-label="Tốc độ">1,00x</button>
         <button id="tx" aria-label="Tắt sách nói">${ICON.power}</button>
         <button id="tvc" aria-label="Giọng đọc">${ICON.voice}</button>
@@ -699,6 +927,7 @@ function openReader(story, toc, startIdx, startP) {
       <div class="tts-more" hidden>
         <div class="tr tr3"><small>Tốc độ</small><button id="trm" aria-label="Giảm 0,01">−</button><input id="tr" type="range" min="0.1" max="2" step="0.01"><button id="trp" aria-label="Tăng 0,01">+</button><b id="trv"></b></div>
         <div class="tr tr2"><select id="tv"></select></div>
+        <div class="tr tr4"><button id="tmus" class="btn">♪ Nhạc nền</button><button id="trule" class="btn">Phát âm / bỏ qua</button></div>
       </div>
     </div>
     <div class="tinfo"><small id="tcnt"></small><small id="tst"></small><small id="tpg"></small></div>
@@ -718,6 +947,8 @@ function openReader(story, toc, startIdx, startP) {
   const setRbh = () => { el.style.setProperty("--rbh", (rbot.offsetHeight || 120) + "px"); el.style.setProperty("--ih", ($(".tinfo", el).offsetHeight || 28) + "px"); };
   const applyRead = () => {            // độ sáng + màu chữ riêng của trang đọc
     $(".rdim", el).style.opacity = cfg.dim || 0;
+    const hr = new Date().getHours(), warmOn = cfg.warm > 0 && (!cfg.warmAuto || hr >= 19 || hr < 6);
+    $(".rwarm", el).style.opacity = warmOn ? cfg.warm / 100 * 0.5 : 0;
     if (cfg.rfg) el.style.setProperty("--rfg", cfg.rfg); else el.style.removeProperty("--rfg");
   };
   sl.max = Math.max(1, toc.length - 1); sl.disabled = toc.length < 2;
@@ -738,6 +969,110 @@ function openReader(story, toc, startIdx, startP) {
   const modeLabel = () => { $("#bm", el).innerHTML = rIcon(); };
   modeLabel();
   $(".rt", el).textContent = story.title;
+
+  // ---- giữ lâu một đoạn: nghe từ đây / đánh dấu / sao chép ----
+  let lpT = 0, lpAt = 0, lpPt = null;
+  scroll.addEventListener("touchstart", e => {
+    if (autoOn) autoStop();
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0]; lpPt = { x: t.clientX, y: t.clientY }; clearTimeout(lpT);
+    lpT = setTimeout(() => { lpT = 0; if (!lpPt) return; lpAt = Date.now(); longPress(lpPt.x, lpPt.y); }, 520);
+  }, { passive: true });
+  scroll.addEventListener("touchmove", e => { if (lpPt && Math.hypot(e.touches[0].clientX - lpPt.x, e.touches[0].clientY - lpPt.y) > 10) { clearTimeout(lpT); lpPt = null; } }, { passive: true });
+  ["touchend", "touchcancel"].forEach(ev => scroll.addEventListener(ev, () => { clearTimeout(lpT); lpPt = null; }, { passive: true }));
+  scroll.addEventListener("contextmenu", e => e.preventDefault());
+  function longPress(x, y) {
+    if (!text) return;
+    const e0 = document.elementFromPoint(x, y), pe = e0 && e0.closest && e0.closest("p[data-p]");
+    if (!pe || !text.contains(pe)) return;
+    if (navigator.vibrate) navigator.vibrate(15);
+    const pIdx = +pe.dataset.p, c = toc[idx], snip = pe.textContent.replace(/\s+/g, " ").trim();
+    const ci = tts.ensure() ? tts.indexAt(x, y, pIdx) : -1;
+    const has = !!bmFind(c.position, pIdx);
+    const s = openSheet(`<h3>${esc(snip.slice(0, 70))}${snip.length > 70 ? "…" : ""}</h3><div class="menu">
+      <button id="m1">▶ Nghe từ đây</button><button id="m2">🔖 ${has ? "Sửa / xóa đánh dấu" : "Đánh dấu / ghi chú"}</button><button id="m3">📋 Sao chép đoạn</button></div>`);
+    sheetEl.dataset.theme = el.dataset.theme;
+    $("#m1", s).onclick = () => { closeSheet(); tts.startAt(ci < 0 ? 0 : ci); };
+    $("#m2", s).onclick = () => { closeSheet(); editBm(pIdx, snip); };
+    $("#m3", s).onclick = () => { closeSheet(); copyText(snip); toast("Đã sao chép"); };
+  }
+
+  // ---- đánh dấu / ghi chú ----
+  const bmFind = (pos, p) => (bm[story.id] || []).find(b => b.pos === pos && b.p === p);
+  function markBm() {
+    if (!text || !toc[idx]) return;
+    $$("p.bmk", text).forEach(p => p.classList.remove("bmk"));
+    (bm[story.id] || []).filter(b => b.pos === toc[idx].position).forEach(b => { const p = $(`p[data-p="${b.p}"]`, text); if (p) p.classList.add("bmk"); });
+  }
+  function editBm(pIdx, snip) {
+    const c = toc[idx], ex = bmFind(c.position, pIdx);
+    const s = openSheet(`<h3>${ex ? "Đánh dấu" : "Thêm đánh dấu"}</h3><p class="muted">${esc(snip.slice(0, 140))}${snip.length > 140 ? "…" : ""}</p>
+      <textarea id="bmn" rows="3" placeholder="Ghi chú (không bắt buộc)">${esc(ex ? ex.note : "")}</textarea>
+      <div class="r"><button class="btn solid" id="bms">Lưu</button>${ex ? `<button class="btn danger" id="bmd">Xóa</button>` : ""}</div>`);
+    sheetEl.dataset.theme = el.dataset.theme;
+    $("#bms", s).onclick = () => {
+      const arr = bm[story.id] || (bm[story.id] = []), o = { pos: c.position, ct: c.title, p: pIdx, txt: snip.slice(0, 140), note: $("#bmn", s).value.trim(), t: Date.now() };
+      const i = arr.findIndex(b => b.pos === o.pos && b.p === o.p); if (i >= 0) arr[i] = o; else arr.push(o);
+      saveBm(); markBm(); closeSheet(); toast("Đã lưu đánh dấu");
+    };
+    if (ex) $("#bmd", s).onclick = () => { bm[story.id] = bm[story.id].filter(b => b !== ex); if (!bm[story.id].length) delete bm[story.id]; saveBm(); markBm(); closeSheet(); toast("Đã xóa đánh dấu"); };
+  }
+  function jumpTo(pos, p) {
+    const i = toc.findIndex(c => c.position === pos); if (i < 0) return;
+    if (i !== idx) return goTo(i, { p });
+    const t = text && $(`[data-p="${p}"]`, text); if (!t) return;
+    if (isPage() && hclip) hGo(pageOf(t), true); else t.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+
+  // ---- tự cuộn ----
+  let autoOn = false, autoRaf = 0, autoLast = 0, autoAcc = 0;
+  function autoStop() { if (!autoOn) return; autoOn = false; cancelAnimationFrame(autoRaf); autoRaf = 0; toast("Đã dừng tự cuộn"); }
+  function autoStart() {
+    if (isPage()) { toast("Tự cuộn chỉ dùng ở chế độ cuộn dọc"); return false; }
+    autoOn = true; autoLast = performance.now(); autoAcc = 0;
+    const step = t => {
+      if (!autoOn) return;
+      autoAcc += (cfg.auto || 40) * Math.min(100, t - autoLast) / 1000; autoLast = t;
+      const px = Math.floor(autoAcc);
+      if (px >= 1) {
+        autoAcc -= px; const b = scroll.scrollTop; scroll.scrollTop = b + px;
+        if (scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 2) {
+          if (idx < toc.length - 1) { goTo(idx + 1).then(ok => { if (ok && autoOn) { autoLast = performance.now(); autoRaf = requestAnimationFrame(step); } else autoOn = false; }); return; }
+          autoOn = false; toast("Hết truyện"); return;
+        }
+      }
+      autoRaf = requestAnimationFrame(step);
+    };
+    autoRaf = requestAnimationFrame(step); return true;
+  }
+
+  // ---- tìm trong chương ----
+  const sbar = $(".rsearch", el), sin = $("input", sbar), scnt = $(".scnt", sbar);
+  let sRanges = [], sI = -1;
+  function searchClear() { sRanges = []; sI = -1; if (window.CSS && CSS.highlights) { CSS.highlights.delete("sres"); CSS.highlights.delete("scur"); } scnt.textContent = ""; }
+  function searchClose() { searchClear(); sbar.hidden = true; }
+  function searchRun() {
+    searchClear(); const q = sin.value.trim().toLowerCase(); if (!q || !text) return;
+    const w = document.createTreeWalker(text, NodeFilter.SHOW_TEXT); let n;
+    while ((n = w.nextNode()) && sRanges.length < 500) {
+      const d = n.data.toLowerCase(); let i = 0;
+      while ((i = d.indexOf(q, i)) >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + q.length); sRanges.push(r); i += q.length; }
+    }
+    if (!sRanges.length) { scnt.textContent = "0"; return; }
+    if (window.CSS && CSS.highlights && window.Highlight) CSS.highlights.set("sres", new Highlight(...sRanges));
+    sGo(0);
+  }
+  function sGo(i) {
+    if (!sRanges.length) return; sI = (i + sRanges.length) % sRanges.length;
+    const r = sRanges[sI]; scnt.textContent = `${sI + 1}/${sRanges.length}`;
+    if (window.CSS && CSS.highlights && window.Highlight) CSS.highlights.set("scur", new Highlight(r));
+    if (isPage() && hclip) hGo(pageOf(r), true);
+    else { const rr = r.getBoundingClientRect(), sc = scroll.getBoundingClientRect(); scroll.scrollBy({ top: rr.top - sc.top - sc.height * 0.3, behavior: "smooth" }); }
+  }
+  $("#rsb", el).onclick = () => { el.classList.add("hide"); sbar.hidden = false; sin.focus(); sin.select(); };
+  let sT; sin.addEventListener("input", () => { clearTimeout(sT); sT = setTimeout(searchRun, 250); });
+  sin.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (sRanges.length && sin.dataset.q === sin.value) sGo(sI + 1); else { sin.dataset.q = sin.value; searchRun(); } sin.blur(); } });
+  $(".sn", sbar).onclick = () => sGo(sI + 1); $(".sp", sbar).onclick = () => sGo(sI - 1); $(".sx", sbar).onclick = searchClose;
 
   // ---- vị trí đang đọc ----
   const firstVisible = () => {
@@ -801,8 +1136,8 @@ function openReader(story, toc, startIdx, startP) {
   const hPrev = () => { if (page > 0) hGo(page - 1, true); else if (idx > 0) goTo(idx - 1, { end: true }); else animTo(page * W, 200); };
 
   scroll.addEventListener("click", e => {
-    if (e.target.closest("button") || Date.now() - swipedAt < 350) return;
-    if (isPage()) { const x = e.clientX / window.innerWidth; if (x < 0.3) hPrev(); else if (x > 0.7) hNext(); else show(); }
+    if (e.target.closest("button") || Date.now() - swipedAt < 350 || Date.now() - lpAt < 700) return;
+    if (isPage()) { const x = e.clientX / window.innerWidth; if (cfg.edge === false) show(); else if (x < 0.3) hPrev(); else if (x > 0.7) hNext(); else show(); }
     else show();
   });
   let drag = null;
@@ -837,7 +1172,7 @@ function openReader(story, toc, startIdx, startP) {
 
   // ---- vẽ chương ----
   function paint(ch, p, atEnd) {
-    curCh = ch;
+    curCh = ch; searchClose();
     const paras = renderContent(ch.content), title = esc(ch.title || curTitle());
     if (isPage()) {
       scroll.className = "rscroll hm";
@@ -854,6 +1189,7 @@ function openReader(story, toc, startIdx, startP) {
       updProg();
     }
     try { tts.rewrap(); } catch {}
+    markBm();
   }
   function relayout(keepPage) {
     if (!curCh || !text) return;
@@ -876,13 +1212,15 @@ function openReader(story, toc, startIdx, startP) {
     paint(ch, p, atEnd);
     saveHist(p); pushHist(story.id, c.position); updateMini();
     if (i + 1 < toc.length) getChapter(story.id, toc[i + 1].position).catch(() => {});
+    const nPf = +cfg.prefetch || 0;
+    if (nPf > 1 && wifiOk()) (async () => { for (let k = 2; k <= nPf; k++) { const nc = toc[i + k]; if (!nc || !el.isConnected || my !== tok) break; try { await getChapter(story.id, nc.position); } catch { break; } await new Promise(r => setTimeout(r, 600)); } })();
     return true;
   }
   async function goTo(i, o = {}) {
     if (i < 0 || i >= toc.length) return false;
     const was = o.play || tts.playing;
     tts.halt(was);
-    const ok = await load(i, 0, !!o.end);
+    const ok = await load(i, o.p || 0, !!o.end);
     if (ok && was) tts.start(0); else if (!ok) tts.ui();
     return ok;
   }
@@ -891,10 +1229,23 @@ function openReader(story, toc, startIdx, startP) {
   $("#bp", el).onclick = () => goTo(idx - 1);
   $("#bn", el).onclick = () => goTo(idx + 1);
   $("#bt", el).onclick = () => {
-    const s = openSheet(`<h3>Danh sách chương</h3>${toc.map((c, i) => `<div class="ch ${i === idx ? "cur" : ""}" data-i="${i}"><span>${esc(c.title)}</span>${dl[story.id] && dl[story.id].have.includes(c.position) ? "<i>✓</i>" : ""}</div>`).join("")}`);
+    const s = openSheet(`<h3>Mục lục</h3><div class="seg" id="tsg"><button data-t="c" class="on">Chương</button><button data-t="b" id="tbb"></button></div><div id="tl"></div>`);
     sheetEl.dataset.theme = el.dataset.theme;
-    $$(".ch", s).forEach(c => c.onclick = () => { closeSheet(); goTo(+c.dataset.i); });
-    const cur = $(".cur", s); if (cur) cur.scrollIntoView({ block: "center" });
+    const nb = () => (bm[story.id] || []).length;
+    const drawC = () => {
+      $("#tl", s).innerHTML = toc.map((c, i) => `<div class="ch ${i === idx ? "cur" : ""}" data-i="${i}"><span>${esc(c.title)}</span>${dl[story.id] && dl[story.id].have.includes(c.position) ? "<i>✓</i>" : ""}</div>`).join("");
+      $$(".ch", s).forEach(c => c.onclick = () => { closeSheet(); goTo(+c.dataset.i); });
+      const cur = $(".cur", s); if (cur) cur.scrollIntoView({ block: "center" });
+    };
+    const drawB = () => {
+      const l = (bm[story.id] || []).slice().sort((a, b) => a.pos - b.pos || a.p - b.p);
+      $("#tl", s).innerHTML = l.length ? l.map((b, i) => `<div class="ch bmi" data-k="${i}"><div><b>${esc(b.ct || "")}</b><small>${esc(b.txt)}</small>${b.note ? `<em>${esc(b.note)}</em>` : ""}</div><button class="x" data-bx="${i}">✕</button></div>`).join("") : `<p class="empty">Chưa có đánh dấu.<br>Giữ lâu một đoạn trong truyện để đánh dấu hoặc ghi chú.</p>`;
+      $$(".bmi", s).forEach(c => c.onclick = e => { if (e.target.closest("[data-bx]")) return; const b = l[+c.dataset.k]; closeSheet(); jumpTo(b.pos, b.p); });
+      $$("[data-bx]", s).forEach(x => x.onclick = () => { const b = l[+x.dataset.bx]; bm[story.id] = bm[story.id].filter(v => v !== b); if (!bm[story.id].length) delete bm[story.id]; saveBm(); markBm(); $("#tbb", s).textContent = `Đánh dấu (${nb()})`; drawB(); });
+    };
+    $("#tbb", s).textContent = `Đánh dấu (${nb()})`;
+    $$("#tsg button", s).forEach(b => b.onclick = () => { $$("#tsg button", s).forEach(x => x.classList.toggle("on", x === b)); b.dataset.t === "c" ? drawC() : drawB(); });
+    drawC();
   };
   let lastP = 0;
   $("#bm", el).onclick = () => {
@@ -914,7 +1265,18 @@ function openReader(story, toc, startIdx, startP) {
       <div class="stp"><label>Chế độ</label><select id="md"><option value="scroll">Cuộn dọc</option><option value="page">Vuốt ngang</option></select></div>
       <div class="stp"><label>Cỡ chữ</label><button id="s1">−</button><b id="sv">${cfg.size}</b><button id="s2">+</button></div>
       <div class="stp"><label>Giãn dòng</label><button id="l1">−</button><b id="lv">${cfg.lh}</b><button id="l2">+</button></div>
-      <div class="stp"><label>Font</label><select id="fn">${fontOpts()}</select></div>`);
+      <div class="stp"><label>Font</label><select id="fn">${fontOpts()}</select></div>
+      <div class="stp"><label>Lọc ánh sáng xanh</label><input id="wm" type="range" min="0" max="100" step="5" value="${cfg.warm || 0}"></div>
+      <div class="chips"><button class="chip ${cfg.warmAuto ? "on" : ""}" id="wma">Tự bật 19h–6h</button><button class="chip ${cfg.awake !== false ? "on" : ""}" id="awk">Giữ màn hình sáng</button><button class="chip ${cfg.edge !== false ? "on" : ""}" id="edg">Chạm mép lật trang</button></div>
+      <div class="stp"><label>Tự cuộn</label><input id="aus" type="range" min="10" max="200" step="5" value="${cfg.auto || 40}"><button class="chip" id="aub">${autoOn ? "Dừng" : "Bắt đầu"}</button></div>`);
+    $("#wm", s).oninput = e => { cfg.warm = +e.target.value; applyRead(); };
+    $("#wm", s).onchange = () => saveCfg();
+    $("#wma", s).onclick = e => { cfg.warmAuto = !cfg.warmAuto; if (cfg.warmAuto && !cfg.warm) { cfg.warm = 40; $("#wm", s).value = 40; } saveCfg(); applyRead(); e.target.classList.toggle("on", cfg.warmAuto); };
+    $("#awk", s).onclick = e => { cfg.awake = cfg.awake === false; saveCfg(); keepOn(); e.target.classList.toggle("on", cfg.awake !== false); };
+    $("#edg", s).onclick = e => { cfg.edge = cfg.edge === false; saveCfg(); e.target.classList.toggle("on", cfg.edge !== false); };
+    $("#aus", s).oninput = e => { cfg.auto = +e.target.value; };
+    $("#aus", s).onchange = () => saveCfg();
+    $("#aub", s).onclick = () => { if (autoOn) { autoOn = false; cancelAnimationFrame(autoRaf); toast("Đã dừng tự cuộn"); closeSheet(); return; } closeSheet(); el.classList.add("hide"); autoStart(); };
     $("#bri", s).oninput = e => { cfg.dim = +(1 - e.target.value / 100).toFixed(2); applyRead(); };
     $("#bri", s).onchange = () => saveCfg();
     $$("[data-fg]", s).forEach(b => b.onclick = () => { cfg.rfg = b.dataset.fg; saveCfg(); applyRead(); $$("[data-fg]", s).forEach(x => x.classList.toggle("on", x === b)); });
@@ -977,10 +1339,10 @@ function openReader(story, toc, startIdx, startP) {
   const web = !native && "speechSynthesis" in window ? window.speechSynthesis : null;
   const tts = (() => {
     const pl = $("#tpl", el), vs = $("#tv", el), rs = $("#tr", el), ss = $("#ts", el), st = $("#tst", el);
-    let chunks = [], pos = 0, gen = 0, sleepT = null, hl = -2, webVoices = [], since = 0, flushT = null;
+    let chunks = [], pos = 0, gen = 0, sleepT = null, sleepCh = 0, hl = -2, webVoices = [], since = 0, flushT = null;
     const wrapped = new Map();
     const cnt = () => { $("#tcnt", el).textContent = chunks.length ? `${pos + 1}/${chunks.length}` : ""; };
-    const tlab = () => { $("#tsl", el).textContent = ss.value === "0" ? "Hẹn giờ" : ss.value + " phút"; };
+    const tlab = () => { $("#tsl", el).textContent = ss.value === "0" ? "Hẹn giờ" : ss.value[0] === "c" ? ss.selectedOptions[0].text.replace("Sau ", "") : ss.value + " phút"; };
     const T = { playing: false };
     const flush = () => { // cộng thời gian NGHE (tính theo đồng hồ, không phụ thuộc timer nền)
       if (!since) return; const now = Date.now(); addTime(story, 1, Math.min((now - since) / 1000, 120)); since = now;
@@ -996,8 +1358,13 @@ function openReader(story, toc, startIdx, startP) {
       return out;
     };
     const build = () => {
-      const l = []; const t = curTitle().trim(); if (t) l.push({ t, p: -1 });
-      $$("p[data-p]", text).forEach(p => split(p.textContent.replace(/\s+/g, " ").trim()).forEach(x => { if (/[\p{L}\p{N}]/u.test(x)) l.push({ t: x, p: +p.dataset.p }); }));
+      const sk = skipFn(), pr = pronFn();
+      const l = []; const t = curTitle().trim(); if (t) l.push({ t, p: -1, s: pr(t) });
+      $$("p[data-p]", text).forEach(p => {
+        const raw = p.textContent.replace(/\s+/g, " ").trim();
+        if (sk(raw)) return;
+        split(raw).forEach(x => { if (/[\p{L}\p{N}]/u.test(x)) l.push({ t: x, p: +p.dataset.p, s: pr(x) }); });
+      });
       return l;
     };
     const unwrap = () => { wrapped.forEach((html, p) => { if (p.isConnected) p.innerHTML = html; }); wrapped.clear(); };
@@ -1041,13 +1408,13 @@ function openReader(story, toc, startIdx, startP) {
       if (!cfg.voice && webVoices[0]) vs.value = webVoices[0].name;
     };
     const engineStart = from => {
-      if (native) return native.speak(JSON.stringify(chunks.map(c => c.t)), from, cfg.rate, gen, story.title, curTitle(), imgFull(story.cover, 400));
+      if (native) return native.speak(JSON.stringify(chunks.map(c => c.s || c.t)), from, cfg.rate, gen, story.title, curTitle(), imgFull(story.cover, 400));
       web.cancel(); const g = gen;
       const at = i => {
         if (g !== gen || !T.playing) return;
         if (i >= chunks.length) return T.finished();
         pos = i; hi(i); cnt(); flush();
-        const u = new SpeechSynthesisUtterance(chunks[i].t); u.lang = "vi-VN"; u.rate = cfg.rate;
+        const u = new SpeechSynthesisUtterance(chunks[i].s || chunks[i].t); u.lang = "vi-VN"; u.rate = cfg.rate;
         const v = webVoices.find(x => x.name === vs.value); if (v) u.voice = v;
         u.onend = () => at(i + 1);
         u.onerror = ev => { if (ev.error === "canceled" || ev.error === "interrupted") return; if (g === gen) { T.halt(); T.ui(); st.textContent = "Lỗi đọc"; } };
@@ -1077,18 +1444,20 @@ function openReader(story, toc, startIdx, startP) {
       if (!text) return;
       flush(); if (!chunks.length) { chunks = build(); wrap(); }
       if (!chunks.length) { st.textContent = "Chương này chưa có nội dung"; return; }
-      pos = Math.min(Math.max(0, from), chunks.length - 1); gen++; T.playing = true; since = Date.now(); st.textContent = ""; T.ui(); engineStart(pos);
+      searchClose(); pos = Math.min(Math.max(0, from), chunks.length - 1); gen++; T.playing = true; since = Date.now(); st.textContent = ""; T.ui(); engineStart(pos); music.start();
       clearInterval(flushT); flushT = setInterval(flush, 15000);
     };
-    T.pause = () => { flush(); since = 0; T.playing = false; gen++; if (native) native.pause(); else if (web) web.cancel(); T.ui(); };
-    T.halt = silent => { flush(); since = 0; T.playing = false; gen++; unwrap(); chunks = []; if (!silent) { if (native) native.pause(); else if (web) web.cancel(); } hi(-1); hl = -2; };
+    T.pause = () => { flush(); since = 0; T.playing = false; gen++; music.pause(); if (native) native.pause(); else if (web) web.cancel(); T.ui(); };
+    T.halt = silent => { flush(); since = 0; T.playing = false; gen++; unwrap(); chunks = []; if (!silent) { music.pause(); if (native) native.pause(); else if (web) web.cancel(); } hi(-1); hl = -2; };
     T.stopAll = () => {
-      T.halt(true); if (native) native.stop(); else if (web) web.cancel(); clearTimeout(sleepT); sleepT = null; clearInterval(flushT); ss.value = "0"; tlab(); ttsEl.hidden = true; $(".tts-more", el).hidden = true; T.ui();
+      T.halt(true); if (native) native.stop(); else if (web) web.cancel(); clearTimeout(sleepT); sleepT = null; sleepCh = 0; music.pause(); clearInterval(flushT); ss.value = "0"; tlab(); ttsEl.hidden = true; $(".tts-more", el).hidden = true; T.ui();
     };
     T.finished = async () => {
       hi(-1); hl = -2; flush();
       if (idx >= toc.length - 1) { T.pause(); st.textContent = "Đã hết truyện"; return; }
+      const stop = sleepCh > 0 && --sleepCh === 0;
       st.textContent = "Đang chuyển chương..."; chunks = []; T.playing = false; gen++;
+      if (stop) { music.pause(); ss.value = "0"; tlab(); await goTo(idx + 1); st.textContent = "Đã hết giờ hẹn"; T.ui(); return; }
       const ok = await goTo(idx + 1, { play: true });
       if (!ok) { T.pause(); st.textContent = "Không tải được chương kế"; }
     };
@@ -1120,17 +1489,36 @@ function openReader(story, toc, startIdx, startP) {
     $("#trm", el).onclick = () => nudge(-0.01);
     $("#trp", el).onclick = () => nudge(0.01);
     vs.onchange = () => { cfg.voice = vs.value; saveCfg(); if (native) native.setVoice(vs.value); if (T.playing) T.start(pos); };
-    ss.onchange = () => { clearTimeout(sleepT); const m = +ss.value; tlab(); if (m > 0) sleepT = setTimeout(() => { T.pause(); st.textContent = "Đã hết giờ hẹn"; ss.value = "0"; tlab(); }, m * 60000); };
-    $("#bh", el).onclick = () => {
-      if (!ttsEl.hidden) { T.stopAll(); return; }
-      if (!native && !web) { toast("Máy không hỗ trợ đọc truyện"); return; }
+    ss.onchange = () => { clearTimeout(sleepT); sleepCh = ss.value[0] === "c" ? +ss.value.slice(1) : 0; const m = +ss.value; tlab(); if (m > 0) sleepT = setTimeout(() => { T.pause(); st.textContent = "Đã hết giờ hẹn"; ss.value = "0"; tlab(); }, m * 60000); };
+    const showPanel = () => {
+      if (!native && !web) { toast("Máy không hỗ trợ đọc truyện"); return false; }
       ttsEl.hidden = false; el.classList.remove("hide"); ttsEl.classList.toggle("min", !!cfg.ttsMin); setRbh();
       if (native) {
         native.requestNotificationPermission();
-        if (!native.hasGoogleTts() && confirm("Máy chưa cài Google TTS (giọng chị Google).\nMở Google Play để cài?")) { native.installGoogleTts(); ttsEl.hidden = true; return; }
+        if (!native.hasGoogleTts() && confirm("Máy chưa cài Google TTS (giọng chị Google).\nMở Google Play để cài?")) { native.installGoogleTts(); ttsEl.hidden = true; return false; }
       }
+      return true;
+    };
+    $("#bh", el).onclick = () => {
+      if (!ttsEl.hidden) { T.stopAll(); return; }
+      if (!showPanel()) return;
       T.start(T.visibleIdx());
     };
+    T.ensure = () => { if (!text) return false; if (!chunks.length) { chunks = build(); wrap(); } return chunks.length > 0; };
+    T.indexAt = (x, y, pIdx) => {
+      const e0 = document.elementFromPoint(x, y), sp = e0 && e0.closest && e0.closest(".ts");
+      if (sp && text.contains(sp)) return +sp.dataset.c;
+      const i = chunks.findIndex(c => c.p >= pIdx && c.p >= 0); return i < 0 ? 0 : i;
+    };
+    T.startAt = i => { if (ttsEl.hidden && !showPanel()) return; T.start(i); };
+    T.rebuild = () => {              // đổi quy tắc phát âm / bỏ qua đoạn
+      if (!chunks.length) return; const cp = chunks[pos] ? chunks[pos].p : -1, was = T.playing;
+      unwrap(); chunks = build(); wrap(); let ni = chunks.findIndex(c => c.p >= cp && c.p >= 0); if (ni < 0) ni = 0; pos = ni; cnt();
+      if (was) T.start(ni);
+    };
+    window.__ttsRules = () => T.rebuild();
+    $("#tmus", el).onclick = () => openMusic(el.dataset.theme);
+    $("#trule", el).onclick = () => openTtsRules(el.dataset.theme);
     if (native) {
       fillVoices(nativeVoices());
       window.__ttsNative = {
@@ -1175,6 +1563,9 @@ function openReader(story, toc, startIdx, startP) {
     if (tab === "lib" && !stack.length) renderLib();
   };
   ls.set("last", { id: story.id });
+  const keepOn = () => { try { if (native && window.AndroidApp && AndroidApp.keepScreenOn) AndroidApp.keepScreenOn(cfg.awake !== false); } catch {} };
+  keepOn(); const warmT = setInterval(() => { if (el.isConnected) applyRead(); }, 60000);
+  const prevClose = el.onclose; el.onclose = () => { clearInterval(warmT); autoOn = false; cancelAnimationFrame(autoRaf); try { if (native && window.AndroidApp && AndroidApp.keepScreenOn) AndroidApp.keepScreenOn(false); } catch {} delete window.__ttsRules; if (prevClose) prevClose(); };
   applyRead(); setRbh();
   load(idx, startP).then(() => { if (!startP) toast(isPage() ? "Chạm mép trái/phải hoặc vuốt để lật trang · chạm giữa để mở menu" : "Chạm vào giữa màn hình để hiện/ẩn menu"); });
 }

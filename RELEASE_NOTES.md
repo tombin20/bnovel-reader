@@ -1,4 +1,5 @@
 ## Có gì mới
+- **Thẻ truyện kiểu vBook:** tên truyện nằm ngay trong ảnh bìa, góc trên bên trái hiện số chương và % đã đọc (ví dụ 247C - 86,2%). Mọi thẻ cùng kích thước nên kệ sách gọn mắt, không còn truyện bị nhô lên vì tên dài hay tên chương dài
 - **Giữ lâu một đoạn khi đọc:** hiện menu Nghe từ đây (đọc từ đúng câu đó), Đánh dấu / ghi chú, Sao chép đoạn
 - **Đánh dấu và ghi chú:** đoạn đã đánh dấu được tô nền nhẹ, xem lại ở Mục lục, tab Đánh dấu, chạm để nhảy tới đúng đoạn
 - **Tìm trong chương:** biểu tượng kính lúp ở thanh trên, tô sáng mọi kết quả, bấm ▲ ▼ để chuyển giữa các kết quả

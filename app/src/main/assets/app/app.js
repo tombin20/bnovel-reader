@@ -375,7 +375,7 @@ async function sync(manual) {
     const sh = hr.history || [], shIds = new Set(sh.map(x => x.id));
     for (const x of sh) {
       const t = Date.parse(x.updated_at) || 0, l = hist[x.id];
-      if (!l || t > l.t + 1000) hist[x.id] = { id: x.id, title: x.title, cover: x.cover, pos: x.chapter_pos, ct: x.chapter_title || "", p: l && l.pos === x.chapter_pos ? l.p : 0, t };
+      if (!l || t > l.t + 1000) hist[x.id] = { id: x.id, title: x.title, cover: x.cover, pos: x.chapter_pos, ct: x.chapter_title || "", p: l && l.pos === x.chapter_pos ? l.p : 0, t, n: l && l.n, pc: l && l.pos === x.chapter_pos ? l.pc : undefined };
       else if (l.t > t + 1000) api("/api/history", "PUT", { story: x.id, pos: l.pos }, true).catch(() => {});
     }
     for (const l of Object.values(hist)) if (!shIds.has(l.id)) api("/api/history", "PUT", { story: l.id, pos: l.pos }, true).catch(() => {});
@@ -502,11 +502,19 @@ app.addEventListener("click", e => {
   const r = e.target.closest("[data-resume]"); if (r && !e.target.closest("[data-del]")) resume(+r.dataset.resume);
 });
 
+const pctTxt = v => (+v).toFixed(1).replace(".", ",") + "%";
+function cardStat(s) {             // "247C - 86,2%": số chương + % đã đọc (như vBook)
+  const h = hist[s.id], n = +s.chapters || (h && h.n) || (dl[s.id] && dl[s.id].chapters.length) || 0;
+  let pc = null;
+  if (h) pc = h.pc != null ? h.pc : (n ? Math.min(100, h.pos / n * 100) : null);
+  else if (s.t !== undefined && n) pc = 0;
+  return [n ? n + "C" : "", pc == null ? "" : pctTxt(pc)].filter(Boolean).join(" - ");
+}
 const card = (s, mode) => `<button class="card" ${mode === "resume" ? `data-resume="${s.id}"` : `data-id="${s.id}"`}><div class="cvw"><img class="cv" loading="lazy" src="${esc(img(s.cover, 400))}" alt="">
-  <span class="bd">${fav.some(f => f.id === s.id) ? "♥" : ""}${dl[s.id] ? "⬇" : ""}</span>${tags[s.id] ? `<span class="tg ${tags[s.id].k}">${TAGN[tags[s.id].k]}</span>` : ""}</div><b>${esc(s.title)}</b>
-  <small>${esc(s.ct || (s.chapters ? s.chapters + " chương" : ""))}</small></button>`;
+  ${cardStat(s) ? `<span class="cst">${cardStat(s)}</span>` : ""}<span class="bd">${fav.some(f => f.id === s.id) ? "♥" : ""}${dl[s.id] ? "⬇" : ""}</span>${tags[s.id] ? `<span class="tg ${tags[s.id].k}">${TAGN[tags[s.id].k]}</span>` : ""}
+  <div class="ctl"><span>${esc(s.title)}</span></div></div></button>`;
 const grid = (l, mode) => l.map(s => card(s, mode)).join("");
-const skel = (n = 9) => Array.from({ length: n }, () => `<div class="card sk"><div class="cvw"><div class="cv"></div></div><b></b><small></small></div>`).join("");
+const skel = (n = 9) => Array.from({ length: n }, () => `<div class="card sk"><div class="cvw"><div class="cv"></div></div></div>`).join("");
 
 // ---------- Tủ sách (trang chủ) ----------
 let libTab = "all", libQ = "", libSort = "recent";
@@ -1089,7 +1097,7 @@ function openReader(story, toc, startIdx, startP) {
   const currentP = () => (isPage() ? anchorH() : firstVisible());
   const saveHist = p => {
     const c = toc[idx]; if (!c) return;
-    hist[story.id] = { id: story.id, title: story.title, cover: story.cover, pos: c.position, ct: c.title, p: p == null ? currentP() : p, t: Date.now() };
+    hist[story.id] = { id: story.id, title: story.title, cover: story.cover, pos: c.position, ct: c.title, p: p == null ? currentP() : p, t: Date.now(), n: toc.length, pc: +Math.min(100, (idx + chapFrac()) / Math.max(1, toc.length) * 100).toFixed(1) };
     ls.set("hist", hist);
   };
   scroll.addEventListener("scroll", () => { if (isPage()) return; updProg(); clearTimeout(saveT); saveT = setTimeout(() => saveHist(), 400); }, { passive: true });

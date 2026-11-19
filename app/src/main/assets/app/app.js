@@ -87,6 +87,7 @@ function applyTheme() {
   r.style.setProperty("--size", cfg.size + "px");
   r.style.setProperty("--lh", cfg.lh);
   r.style.setProperty("--font", (FONTS[cfg.font] || FONTS.serif)[1]);
+  if (window.__bgApply) window.__bgApply();
   applyBars();
 }
 const FONTS = {
@@ -138,6 +139,74 @@ const tx = (mode, fn) => idb.then(db => new Promise((res, rej) => {
 const chGet = k => tx("readonly", s => s.get(k));
 const chPut = (k, v) => tx("readwrite", s => s.put(v, k));
 const chDel = k => tx("readwrite", s => s.delete(k));
+
+// ---------- Hình nền ứng dụng (ảnh từ máy) ----------
+// Ảnh được: cắt vừa tỉ lệ màn hình, thu nhỏ, làm mờ, rồi PHỦ một lớp màu giao diện (độ phủ tự tính theo độ sáng/độ tương phản của ảnh)
+// => dù ảnh sáng, tối hay nhiều chi tiết thì chữ và bìa truyện vẫn rõ, không dính vào nền.
+const BG_KEY = "__bg", THEME_BG = { dark: "#15171b", black: "#000000", sepia: "#f3ecdc", light: "#fbfbfc", march7: "#fdeaf3" };
+let bgSrc = null, bgUrl = "", bgSig = "";
+const hexRgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const lumOf = (r, g, b) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+const clamp01 = (v, a, b) => Math.min(b, Math.max(a, v));
+function bgAlpha() {
+  const b = cfg.bg; if (!b) return 0.8;
+  if (b.dim != null) return clamp01(b.dim, 0.5, 0.96);
+  const L = lumOf(...hexRgb(THEME_BG[cfg.theme] || THEME_BG.dark));
+  return +clamp01(0.62 + 0.4 * Math.abs((b.lum || 0.5) - L) + 0.5 * (b.std || 0.2), 0.6, 0.93).toFixed(2);
+}
+const loadBmp = async f => { try { return await createImageBitmap(f, { imageOrientation: "from-image" }); } catch { const u = URL.createObjectURL(f); try { const i = new Image(); i.src = u; await i.decode(); return i; } finally { setTimeout(() => URL.revokeObjectURL(u), 2000); } } };
+const toBlob = (cv, q) => new Promise(r => cv.toBlob(r, "image/jpeg", q));
+async function bgProcess(file) {
+  const bmp = await loadBmp(file), bw = bmp.width, bh = bmp.height;
+  const W = 720, H = Math.round(W * clamp01(innerHeight / Math.max(1, innerWidth), 1.2, 2.4));
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const c = cv.getContext("2d"), sc = Math.max(W / bw, H / bh);
+  c.imageSmoothingQuality = "high";
+  c.drawImage(bmp, (W - bw * sc) / 2, (H - bh * sc) / 2, bw * sc, bh * sc);
+  const sm = document.createElement("canvas"); sm.width = 32; sm.height = 32;
+  const sc2 = sm.getContext("2d"); sc2.drawImage(cv, 0, 0, 32, 32);
+  const d = sc2.getImageData(0, 0, 32, 32).data, ls_ = [];
+  for (let i = 0; i < d.length; i += 4) ls_.push(lumOf(d[i], d[i + 1], d[i + 2]));
+  const mean = ls_.reduce((a, b) => a + b, 0) / ls_.length;
+  const std = Math.sqrt(ls_.reduce((a, b) => a + (b - mean) * (b - mean), 0) / ls_.length);
+  if (bmp.close) bmp.close();
+  return { blob: await toBlob(cv, 0.86), lum: mean, std };
+}
+async function bgBuild(blob, level) {      // làm mờ bằng cách thu nhỏ nhiều bước, trình duyệt phóng lại sẽ mượt
+  if (!level) return URL.createObjectURL(blob);
+  const bmp = await createImageBitmap(blob), f = level === 1 ? 3 : 8;
+  let w = bmp.width, h = bmp.height, src = bmp;
+  const tw = Math.max(16, Math.round(w / f)), th = Math.max(16, Math.round(h / f));
+  while (w > tw * 1.01) {
+    w = Math.max(tw, Math.round(w / 2)); h = Math.max(th, Math.round(h / 2));
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    const c = cv.getContext("2d"); c.imageSmoothingQuality = "high"; c.drawImage(src, 0, 0, w, h); src = cv;
+  }
+  if (bmp.close) bmp.close();
+  return URL.createObjectURL(await toBlob(src, 0.9));
+}
+async function applyBg() {
+  const root = document.documentElement, b = cfg.bg;
+  if (!b || !b.on || !bgSrc) { root.removeAttribute("data-bg"); root.style.removeProperty("--bgurl"); root.style.removeProperty("--scrim"); return; }
+  const sig = (b.blur || 0) + ":" + (bgSrc.size || 0);
+  if (sig !== bgSig) {
+    const old = bgUrl; bgUrl = await bgBuild(bgSrc, b.blur || 0); bgSig = sig;
+    if (old) setTimeout(() => URL.revokeObjectURL(old), 3000);
+  }
+  const [r, g, bl] = hexRgb(THEME_BG[cfg.theme] || THEME_BG.dark);
+  root.style.setProperty("--scrim", `rgba(${r},${g},${bl},${bgAlpha()})`);
+  root.style.setProperty("--bgurl", `url("${bgUrl}")`);
+  root.dataset.bg = "1";
+}
+async function bgSet(file) {
+  const r = await bgProcess(file);
+  await chPut(BG_KEY, r.blob); bgSrc = r.blob; bgSig = "";
+  cfg.bg = { on: true, blur: cfg.bg ? cfg.bg.blur : 1, lum: r.lum, std: r.std, dim: null }; saveCfg();
+  await applyBg();
+}
+async function bgClear() { cfg.bg = null; saveCfg(); bgSrc = null; bgSig = ""; try { await chDel(BG_KEY); } catch {} await applyBg(); }
+window.__bgApply = () => { applyBg().catch(() => {}); };
+(async () => { if (cfg.bg && cfg.bg.on) { try { bgSrc = await chGet(BG_KEY); } catch {} if (!bgSrc) { cfg.bg = null; saveCfg(); } applyBg().catch(() => {}); } })();
 
 // ---------- Dữ liệu truyện ----------
 let storiesCache = null;
@@ -394,6 +463,14 @@ function renderSettings() {
     : `<p class="muted">Trên web: vào <b>Tài khoản → Tạo mã liên kết</b>, rồi nhập mã 8 ký tự vào đây để đồng bộ.</p>
       <div class="r"><input id="lc" maxlength="9" autocapitalize="characters" placeholder="MÃ LIÊN KẾT" style="flex:1;text-transform:uppercase"><button class="btn solid" id="linkgo">Liên kết</button></div>`}
     <h4>Giao diện ứng dụng</h4><div class="themes">${swatches(cfg.theme)}</div>
+    <h4>Hình nền ứng dụng</h4>
+    <div class="r bgr"><div class="bgprev" id="bgprev" style="${cfg.bg && bgUrl ? `background-image:url('${bgUrl}')` : ""}">${cfg.bg ? "" : "Chưa có"}</div>
+      <div class="bgbtns"><button class="btn solid" id="bgpick">Chọn ảnh từ máy</button>${cfg.bg ? `<button class="btn" id="bgdel">Xóa ảnh</button>` : ""}</div></div>
+    <input type="file" id="bgf" accept="image/*" hidden>
+    ${cfg.bg ? `<div class="r"><label>Làm mờ ảnh</label><select id="bgb"><option value="0">Không</option><option value="1">Nhẹ</option><option value="2">Mạnh</option></select></div>
+    <div class="r"><label>Độ phủ nền: <span id="bgdv">${Math.round(bgAlpha() * 100)}%</span></label><input id="bgd" type="range" min="50" max="96" value="${Math.round(bgAlpha() * 100)}"></div>
+    <div class="chips"><button class="chip ${cfg.bg.dim == null ? "on" : ""}" id="bgauto">Độ phủ tự động</button></div>` : ""}
+    <p class="muted">Ảnh được tự cắt vừa màn hình, làm mờ và phủ màu giao diện để chữ và bìa truyện luôn rõ, dù chọn ảnh nào.</p>
     <h4>Giao diện khi đọc truyện</h4><div class="themes">${swatches(cfg.rtheme === "app" ? "" : cfg.rtheme, "data-rth")}</div>
     <div class="chips"><button class="chip ${cfg.rtheme === "app" ? "on" : ""}" id="rtApp">Theo giao diện ứng dụng</button></div>
     <h4>Chữ khi đọc</h4>
@@ -414,6 +491,21 @@ function renderSettings() {
     <div class="r"><label>Phiên bản: <b>${esc(APP_VER || "web")}</b></label>${native ? `<button class="btn" id="chkupd">Kiểm tra cập nhật</button>` : ""}</div>
     <p class="empty">B-novel Reader</p></div>`;
   $("#fn").value = cfg.font; $("#md").value = cfg.mode;
+  $("#bgpick").onclick = () => $("#bgf").click();
+  $("#bgf").onchange = async e => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    toast("Đang xử lý ảnh...");
+    try { await bgSet(f); renderSettings(); toast("Đã đặt hình nền"); } catch { toast("Không đọc được ảnh này"); }
+  };
+  if ($("#bgdel")) $("#bgdel").onclick = async () => { await bgClear(); renderSettings(); };
+  if ($("#bgb")) {
+    $("#bgb").value = String(cfg.bg.blur || 0);
+    $("#bgb").onchange = async e => { cfg.bg.blur = +e.target.value; saveCfg(); await applyBg(); renderSettings(); };
+    let bgT;
+    $("#bgd").oninput = e => { cfg.bg.dim = +e.target.value / 100; $("#bgdv").textContent = e.target.value + "%"; clearTimeout(bgT); bgT = setTimeout(() => { saveCfg(); applyBg(); }, 60); };
+    $("#bgd").onchange = () => renderSettings();
+    $("#bgauto").onclick = () => { cfg.bg.dim = null; saveCfg(); applyBg(); renderSettings(); };
+  }
   $$("[data-th]", view).forEach(b => b.onclick = () => { cfg.theme = b.dataset.th; saveCfg(); applyTheme(); renderSettings(); });
   $$("[data-rth]", view).forEach(b => b.onclick = () => { cfg.rtheme = b.dataset.rth; saveCfg(); renderSettings(); });
   $("#rtApp").onclick = () => { cfg.rtheme = "app"; saveCfg(); renderSettings(); };

@@ -1,4 +1,5 @@
 ## Có gì mới
+- **Hình nền ứng dụng theo ảnh trong máy:** vào Cài đặt, mục Hình nền ứng dụng, chọn ảnh từ máy. App tự cắt vừa màn hình, làm mờ và phủ màu giao diện (độ phủ tự tính theo độ sáng và độ rối của ảnh) nên chữ và bìa truyện luôn rõ, dù chọn ảnh nào. Có thể chỉnh độ mờ, độ phủ hoặc xóa ảnh bất cứ lúc nào
 - **Kéo bảng nghe xuống để vừa nghe vừa đọc:** vuốt bảng điều khiển xuống để thu gọn, chỉ còn dòng đếm câu ở dưới; vuốt lên hoặc chạm dòng đó để mở lại. App nhớ trạng thái thu gọn
 - **Thêm font NVN Grand Hotel** (chữ viết tay), chọn trong Cài đặt đọc
 - **Giao diện nghe kiểu vBook:** bảng điều khiển mới gồm 5 nút (chương trước, câu trước, phát/dừng, câu sau, chương sau), hẹn giờ tắt, tốc độ, giọng đọc, cài đặt đọc và bộ đếm câu / chương ngay trên bảng

@@ -15,6 +15,7 @@ import android.speech.tts.Voice;
 import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsResult;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -55,6 +56,8 @@ public class MainActivity extends Activity {
     private String ttsTitle = "B-novel", ttsChapter = "", ttsCover = "";
     private boolean ttsActive = false;
     private File imgDir;
+    private ValueCallback<Uri[]> fileCb;
+    private static final int REQ_FILE = 7731;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -92,6 +95,19 @@ public class MainActivity extends Activity {
 
         // WebView mặc định KHÔNG hiện confirm()/alert() và luôn trả về false -> nút xóa bị hủy ngầm.
         web.setWebChromeClient(new WebChromeClient() {
+            // <input type="file"> (chọn ảnh nền từ máy): WebView mặc định không mở được bộ chọn file
+            @Override
+            public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams p) {
+                if (fileCb != null) { try { fileCb.onReceiveValue(null); } catch (Exception ignored) {} }
+                fileCb = cb;
+                try {
+                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    i.setType("image/*");
+                    startActivityForResult(Intent.createChooser(i, "Chọn ảnh"), REQ_FILE);
+                } catch (Exception e) { fileCb = null; cb.onReceiveValue(null); return false; }
+                return true;
+            }
             @Override
             public boolean onJsConfirm(WebView v, String url, String message, final JsResult r) {
                 if (isFinishing()) { r.cancel(); return true; }
@@ -121,6 +137,17 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new DlBridge(), "AndroidDl");
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState); else web.loadUrl(HOME);
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == REQ_FILE && fileCb != null) {
+            Uri[] r = null;
+            if (res == RESULT_OK && data != null && data.getData() != null) r = new Uri[]{ data.getData() };
+            fileCb.onReceiveValue(r);
+            fileCb = null;
+        }
     }
 
     private void js(String code) {

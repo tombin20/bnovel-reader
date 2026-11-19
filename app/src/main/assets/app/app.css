@@ -419,3 +419,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;heigh
 .tinfo #tst{flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis}
 .tts[hidden]+.tinfo{display:none}
 .rd.hide .tinfo{transform:translateY(var(--rbh,120px))}
+
+/* ===== v2.14: hình nền ứng dụng từ ảnh trên máy ===== */
+html[data-bg] #main,html[data-bg] .screen:not(.rd){background-color:var(--bg);background-image:linear-gradient(var(--scrim),var(--scrim)),var(--bgurl);background-size:cover;background-position:center;background-repeat:no-repeat}
+html[data-bg] #top{background:transparent}
+html[data-bg] #top.sc{box-shadow:none}
+html[data-bg] #tabs,html[data-bg] .screen:not(.rd) .bar{background:var(--glass)}
+/* tách bìa truyện và chữ khỏi ảnh nền */
+html[data-bg] .cvw{box-shadow:0 0 0 1px rgba(255,255,255,.14),0 10px 24px rgba(0,0,0,.4)}
+html[data-bg] .card b,html[data-bg] .sec,html[data-bg] #top b,html[data-bg] .set h4,html[data-bg] .card small{text-shadow:0 0 10px var(--bg),0 0 3px var(--bg)}
+html[data-bg] .chip:not(.on){background:var(--card)}
+.set .bgr{align-items:stretch}
+.bgprev{flex:none;width:64px;height:112px;border-radius:12px;background:var(--bg) center/cover no-repeat;border:1px solid var(--line);display:grid;place-items:center;font-size:11px;color:var(--muted);text-align:center}
+.bgbtns{flex:1;display:flex;flex-direction:column;gap:8px;justify-content:center}
+.bgbtns .btn{width:100%}

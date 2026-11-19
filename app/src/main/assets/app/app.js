@@ -15,6 +15,18 @@ const SV = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 const ICON = {
   back: SV('<path d="M15 5l-7 7 7 7"/>'),
   list: SV('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>'),
+  skipPrev: SV('<path d="M6 5v14"/><path d="M19 5L9 12l10 7z"/>'),
+  skipNext: SV('<path d="M18 5v14"/><path d="M5 5l10 7-10 7z"/>'),
+  rew: SV('<path d="M11 6.5L4.5 12l6.5 5.5zM19.5 6.5L13 12l6.5 5.5z"/>'),
+  fwd: SV('<path d="M13 6.5l6.5 5.5-6.5 5.5zM4.5 6.5L11 12l-6.5 5.5z"/>'),
+  play: SV('<path fill="currentColor" d="M8 5l11 7-11 7z"/>'),
+  pause: SV('<path d="M9 5v14M15 5v14" stroke-width="3.4"/>'),
+  timer: SV('<circle cx="12" cy="13.5" r="7"/><path d="M12 9.5v4l2.5 1.5M9.5 3h5"/>'),
+  power: SV('<path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1011.4 0"/>'),
+  voice: SV('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>'),
+  gear: SV('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>'),
+  scrollV: SV('<path d="M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4"/>'),
+  pageH: SV('<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>'),
   phones: SV('<path d="M4 15v-3a8 8 0 0116 0v3"/><rect x="3" y="14" width="4" height="6.5" rx="1.6"/><rect x="17" y="14" width="4" height="6.5" rx="1.6"/>'),
 };
 const native = window.AndroidTTS || null;
@@ -22,7 +34,7 @@ const APP_VER = native && window.AndroidApp ? (window.AndroidApp.versionName() |
 
 const clampRate = v => Math.min(2, Math.max(0.1, Math.round((+v || 1) * 100) / 100));
 const fmtRate = v => (+v).toFixed(2) + "x";
-let cfg = Object.assign({ base: BASE0, theme: "dark", rtheme: "app", size: 19, font: "serif", lh: 1.8, mode: "scroll", rate: 1, voice: "" }, ls.get("cfg", {}));
+let cfg = Object.assign({ base: BASE0, theme: "dark", rtheme: "app", size: 19, font: "serif", lh: 1.8, mode: "scroll", rate: 1, voice: "", dim: 0, rfg: "" }, ls.get("cfg", {}));
 const saveCfg = () => ls.set("cfg", cfg);
 // giao diện khi đọc: "app" = theo giao diện ứng dụng, hoặc một trong các giao diện riêng
 const rKey = () => (cfg.rtheme && cfg.rtheme !== "app" && THEMES.some(t => t[0] === cfg.rtheme)) ? cfg.rtheme : cfg.theme;
@@ -96,7 +108,7 @@ function applyBars() {
 }
 applyBars();
 applyTheme();
-const swatches = (cur, attr = "data-th") => THEMES.map(([k, c]) => `<button ${attr}="${k}" class="${cur === k ? "on" : ""}" style="background:${c}" aria-label="${k}"></button>`).join("");
+const swatches = (cur, attr = "data-th") => THEMES.map(([k, c]) => `<button ${attr}="${k}" class="${cur === k ? "on" : ""}" style="background:${c};color:${k === "dark" || k === "black" ? "#fff" : "#000"}" aria-label="${k}">Aa</button>`).join("");
 
 // ---------- HTTP ----------
 let hid = 0; const pend = {};
@@ -580,22 +592,56 @@ function openReader(story, toc, startIdx, startP) {
   const el = push(h(`<div class="rd hide" data-theme="${rKey()}">
     <div class="rtop bar"><button class="bk" aria-label="Quay lại">${ICON.back}</button><b class="rt"></b></div>
     <div class="rscroll"></div><div class="pgnum" hidden><span class="pgl"></span><span class="pgr"></span></div><div class="rhead"></div>
+    <div class="rdim"></div>
     <div class="tts" hidden>
-      <div class="tr"><button id="tp">⏮</button><button id="tpl" class="pl">▶</button><button id="tn">⏭</button>
-        <select id="ts"><option value="0">⏲ Tắt</option><option value="15">15 phút</option><option value="30">30 phút</option><option value="60">60 phút</option><option value="90">90 phút</option></select>
-        <button id="tx">✕</button></div>
-      <div class="tr tr3"><small>Tốc độ</small><button id="trm" aria-label="Giảm 0,01">−</button><input id="tr" type="range" min="0.1" max="2" step="0.01"><button id="trp" aria-label="Tăng 0,01">+</button><b id="trv"></b></div>
-      <div class="tr tr2"><select id="tv"></select><small id="tst"></small></div>
+      <div class="tr tmain"><button id="tpc" aria-label="Chương trước">${ICON.skipPrev}</button><button id="tp" aria-label="Câu trước">${ICON.rew}</button><button id="tpl" class="pl" aria-label="Phát/Dừng">${ICON.play}</button><button id="tn" aria-label="Câu sau">${ICON.fwd}</button><button id="tnc" aria-label="Chương sau">${ICON.skipNext}</button></div>
+      <div class="tr topt">
+        <label class="tsel" aria-label="Hẹn giờ tắt">${ICON.timer}<span id="tsl">Hẹn giờ</span><select id="ts"><option value="0">Tắt hẹn giờ</option><option value="15">15 phút</option><option value="30">30 phút</option><option value="60">60 phút</option><option value="90">90 phút</option></select></label>
+        <button id="tspd" class="spd" aria-label="Tốc độ">1,00x</button>
+        <button id="tx" aria-label="Tắt sách nói">${ICON.power}</button>
+        <button id="tvc" aria-label="Giọng đọc">${ICON.voice}</button>
+        <button id="tset" aria-label="Cài đặt đọc">${ICON.gear}</button>
+      </div>
+      <div class="tts-more" hidden>
+        <div class="tr tr3"><small>Tốc độ</small><button id="trm" aria-label="Giảm 0,01">−</button><input id="tr" type="range" min="0.1" max="2" step="0.01"><button id="trp" aria-label="Tăng 0,01">+</button><b id="trv"></b></div>
+        <div class="tr tr2"><select id="tv"></select></div>
+      </div>
+      <div class="tr tinfo"><small id="tcnt"></small><small id="tst"></small><small id="tpg"></small></div>
     </div>
-    <div class="rbot"><button id="bp">‹</button><button id="bt" aria-label="Mục lục">${ICON.list}</button><button id="ba">Aa</button><button id="bm"></button><button id="bh" aria-label="Nghe">${ICON.phones}</button><button id="bn">›</button></div>
+    <div class="rbot">
+      <div class="rinfo"><span id="rpct">0,0%</span><span id="rpch"></span></div>
+      <div class="rsl"><button id="bp">Trước</button><input id="rsl" type="range" min="0" max="1" step="1" value="0"><button id="bn">Tiếp</button></div>
+      <div class="rbtns"><button id="bt" aria-label="Mục lục">${ICON.list}</button><button id="bm" aria-label="Chế độ đọc"></button><button id="bh" aria-label="Nghe">${ICON.phones}</button><button id="ba" aria-label="Cài đặt đọc">${ICON.gear}</button></div>
+    </div>
   </div>`));
   const scroll = $(".rscroll", el), ttsEl = $(".tts", el), pgnum = $(".pgnum", el), pgl = $(".pgl", el), pgr = $(".pgr", el), rhead = $(".rhead", el);
   let text = null, hclip = null, hcols = null, W = 300, H = 400, page = 0, pages = 1, curCh = null;
   let idx = startIdx, tok = 0, saveT, lastAct = Date.now(), swipedAt = 0, anim = 0;
   const curTitle = () => toc[idx] ? toc[idx].title : "";
+  const sl = $("#rsl", el), rpct = $("#rpct", el), rpch = $("#rpch", el), rbot = $(".rbot", el);
+  let sliding = false;
+  const fmtPct = v => v.toFixed(1).replace(".", ",") + "%";
+  const setRbh = () => el.style.setProperty("--rbh", (rbot.offsetHeight || 120) + "px");
+  const applyRead = () => {            // độ sáng + màu chữ riêng của trang đọc
+    $(".rdim", el).style.opacity = cfg.dim || 0;
+    if (cfg.rfg) el.style.setProperty("--rfg", cfg.rfg); else el.style.removeProperty("--rfg");
+  };
+  sl.max = Math.max(1, toc.length - 1); sl.disabled = toc.length < 2;
+  function chapFrac() {
+    if (!curCh) return 0;
+    if (isPage()) return pages > 1 ? page / (pages - 1) : 1;
+    const m = scroll.scrollHeight - scroll.clientHeight; return m > 0 ? Math.min(1, Math.max(0, scroll.scrollTop / m)) : 1;
+  }
+  function updProg() {
+    const pct = fmtPct(Math.min(100, (idx + chapFrac()) / Math.max(1, toc.length) * 100));
+    rpct.textContent = pct;
+    if (!sliding) { rpch.textContent = curTitle(); sl.value = idx; }
+    $("#tpg", el).textContent = `${idx + 1}/${toc.length}  ${pct}`;
+  }
   const isPage = () => cfg.mode === "page";
+  const rIcon = () => isPage() ? ICON.pageH : ICON.scrollV;
   const show = () => el.classList.toggle("hide");
-  const modeLabel = () => { $("#bm", el).textContent = isPage() ? "⇆" : "⇅"; };
+  const modeLabel = () => { $("#bm", el).innerHTML = rIcon(); };
   modeLabel();
   $(".rt", el).textContent = story.title;
 
@@ -617,7 +663,7 @@ function openReader(story, toc, startIdx, startP) {
     hist[story.id] = { id: story.id, title: story.title, cover: story.cover, pos: c.position, ct: c.title, p: p == null ? currentP() : p, t: Date.now() };
     ls.set("hist", hist);
   };
-  scroll.addEventListener("scroll", () => { if (isPage()) return; clearTimeout(saveT); saveT = setTimeout(() => saveHist(), 400); }, { passive: true });
+  scroll.addEventListener("scroll", () => { if (isPage()) return; updProg(); clearTimeout(saveT); saveT = setTimeout(() => saveHist(), 400); }, { passive: true });
 
   // ---- lật trang ngang ----
   function pageOf(elm) {
@@ -644,7 +690,7 @@ function openReader(story, toc, startIdx, startP) {
     if (animate) animTo(page * W); else { cancelAnimationFrame(anim); hclip.scrollLeft = page * W; }
     pgl.textContent = `${page + 1}/${pages}`;
     pgr.textContent = `${idx + 1}/${toc.length}  ${(page / pages * 100).toFixed(1).replace(".", ",")}%`;
-    rhead.textContent = curTitle();
+    rhead.textContent = curTitle(); updProg();
     clearTimeout(saveT); saveT = setTimeout(() => saveHist(), 400);
   }
   function layoutH(p, atEnd) {
@@ -711,19 +757,21 @@ function openReader(story, toc, startIdx, startP) {
       text = $(".rtext", scroll); scroll.scrollTop = 0;
       if (p) { const t = $(`[data-p="${p}"]`, text); if (t) t.scrollIntoView({ block: "start" }); }
       if ($("#en", el)) $("#en", el).onclick = () => goTo(idx + 1);
+      updProg();
     }
+    try { tts.rewrap(); } catch {}
   }
   function relayout(keepPage) {
     if (!curCh || !text) return;
     if (isPage() && keepPage && hclip) { const p = anchorH(); const pc = page; layoutH(p); if (!p) hGo(pc); }
     else paint(curCh, currentP());
   }
-  let rsT; const onResize = () => { clearTimeout(rsT); rsT = setTimeout(() => relayout(), 200); };
+  let rsT; const onResize = () => { clearTimeout(rsT); rsT = setTimeout(() => { setRbh(); relayout(); }, 200); };
   window.__fontsDone = () => relayout(true);
   window.addEventListener("resize", onResize);
 
   async function load(i, p = 0, atEnd = false) {
-    const my = ++tok; idx = i; curCh = null; text = null;
+    const my = ++tok; idx = i; curCh = null; text = null; updProg();
     const c = toc[i]; $(".rt", el).textContent = story.title + " · " + c.title;
     scroll.className = "rscroll"; pgnum.hidden = true;
     scroll.innerHTML = `<div class="rbody"><p class="load">Đang tải...</p></div>`;
@@ -744,6 +792,8 @@ function openReader(story, toc, startIdx, startP) {
     if (ok && was) tts.start(0); else if (!ok) tts.ui();
     return ok;
   }
+  sl.addEventListener("input", () => { sliding = true; const c = toc[+sl.value]; rpch.textContent = c ? c.title : ""; });
+  sl.addEventListener("change", () => { sliding = false; const i = +sl.value; if (i !== idx) goTo(i); else updProg(); });
   $("#bp", el).onclick = () => goTo(idx - 1);
   $("#bn", el).onclick = () => goTo(idx + 1);
   $("#bt", el).onclick = () => {
@@ -760,12 +810,20 @@ function openReader(story, toc, startIdx, startP) {
     toast(isPage() ? "Vuốt ngang: chạm mép trái/phải hoặc vuốt để lật trang" : "Chế độ cuộn dọc");
   };
   $("#ba", el).onclick = () => {
-    const s = openSheet(`<h3>Cài đặt đọc</h3><div class="themes">${swatches(cfg.rtheme === "app" ? "" : cfg.rtheme, "data-rth")}</div>
+    const FG = [["", "Mặc định"], ["#ffffff", "Trắng"], ["#000000", "Đen"], ["#e9d8a6", "Vàng nhạt"], ["#b8b8b8", "Xám"]];
+    const s = openSheet(`<h3>Cài đặt đọc</h3>
+      <div class="stp bri"><label>Độ sáng</label><input id="bri" type="range" min="30" max="100" step="1" value="${Math.round((1 - (cfg.dim || 0)) * 100)}"></div>
+      <div class="themes">${swatches(cfg.rtheme === "app" ? "" : cfg.rtheme, "data-rth")}</div>
       <div class="chips"><button class="chip ${cfg.rtheme === "app" ? "on" : ""}" id="rtapp">Theo giao diện ứng dụng</button></div>
+      <div class="stp"><label>Màu chữ</label></div>
+      <div class="chips" id="fgc">${FG.map(([v, n]) => `<button class="chip ${(cfg.rfg || "") === v ? "on" : ""}" data-fg="${v}">${n}</button>`).join("")}</div>
       <div class="stp"><label>Chế độ</label><select id="md"><option value="scroll">Cuộn dọc</option><option value="page">Vuốt ngang</option></select></div>
       <div class="stp"><label>Cỡ chữ</label><button id="s1">−</button><b id="sv">${cfg.size}</b><button id="s2">+</button></div>
       <div class="stp"><label>Giãn dòng</label><button id="l1">−</button><b id="lv">${cfg.lh}</b><button id="l2">+</button></div>
       <div class="stp"><label>Font</label><select id="fn">${fontOpts()}</select></div>`);
+    $("#bri", s).oninput = e => { cfg.dim = +(1 - e.target.value / 100).toFixed(2); applyRead(); };
+    $("#bri", s).onchange = () => saveCfg();
+    $$("[data-fg]", s).forEach(b => b.onclick = () => { cfg.rfg = b.dataset.fg; saveCfg(); applyRead(); $$("[data-fg]", s).forEach(x => x.classList.toggle("on", x === b)); });
     $("#fn", s).value = cfg.font; $("#md", s).value = cfg.mode;
     const upd = () => { saveCfg(); applyTheme(); $("#sv", s).textContent = cfg.size; $("#lv", s).textContent = cfg.lh; setTimeout(() => relayout(), 30); };
     $("#s1", s).onclick = () => { cfg.size = Math.max(14, cfg.size - 1); upd(); };
@@ -789,6 +847,9 @@ function openReader(story, toc, startIdx, startP) {
   const tts = (() => {
     const pl = $("#tpl", el), vs = $("#tv", el), rs = $("#tr", el), ss = $("#ts", el), st = $("#tst", el);
     let chunks = [], pos = 0, gen = 0, sleepT = null, hl = -2, webVoices = [], since = 0, flushT = null;
+    const wrapped = new Map();
+    const cnt = () => { $("#tcnt", el).textContent = chunks.length ? `${pos + 1}/${chunks.length}` : ""; };
+    const tlab = () => { $("#tsl", el).textContent = ss.value === "0" ? "Hẹn giờ" : ss.value + " phút"; };
     const T = { playing: false };
     const flush = () => { // cộng thời gian NGHE (tính theo đồng hồ, không phụ thuộc timer nền)
       if (!since) return; const now = Date.now(); addTime(story, 1, Math.min((now - since) / 1000, 120)); since = now;
@@ -808,15 +869,35 @@ function openReader(story, toc, startIdx, startP) {
       $$("p[data-p]", text).forEach(p => split(p.textContent.replace(/\s+/g, " ").trim()).forEach(x => { if (/[\p{L}\p{N}]/u.test(x)) l.push({ t: x, p: +p.dataset.p }); }));
       return l;
     };
-    const hi = p => {
-      if (p === hl) return; $$(".tts-on", text || scroll).forEach(e => e.classList.remove("tts-on")); hl = p;
-      const e = p >= 0 && text && $(`p[data-p="${p}"]`, text); if (!e) return;
-      e.classList.add("tts-on");
-      if (isPage() && hclip) { const n = pageOf(e); if (n !== page) hGo(n); }
-      else { const r = e.getBoundingClientRect(), s = scroll.getBoundingClientRect(); if (r.top < s.top + 70 || r.bottom > s.bottom - 130) e.scrollIntoView({ block: "center", behavior: "smooth" }); }
+    const unwrap = () => { wrapped.forEach((html, p) => { if (p.isConnected) p.innerHTML = html; }); wrapped.clear(); };
+    const wrap = () => {        // bọc từng câu trong <span> để tô sáng đúng câu đang đọc
+      unwrap(); if (!text) return;
+      const byP = {};
+      chunks.forEach((c, i) => { if (c.p >= 0) (byP[c.p] = byP[c.p] || []).push(i); });
+      for (const k in byP) {
+        const pe = $(`p[data-p="${k}"]`, text); if (!pe) continue;
+        const src = pe.textContent.replace(/\s+/g, " ").trim(), orig = pe.innerHTML; let cur = 0, html = "", ok = true;
+        for (const i of byP[k]) {
+          const at = src.indexOf(chunks[i].t, cur);
+          if (at < 0) { ok = false; break; }
+          html += esc(src.slice(cur, at)) + `<span class="ts" data-c="${i}">${esc(chunks[i].t)}</span>`; cur = at + chunks[i].t.length;
+        }
+        if (!ok) continue;
+        wrapped.set(pe, orig); pe.innerHTML = html + esc(src.slice(cur));
+      }
     };
+    const hi = i => {
+      hl = i; $$(".tts-cur,.tts-on", text || scroll).forEach(e => e.classList.remove("tts-cur", "tts-on"));
+      if (i < 0 || !chunks[i] || !text) return;
+      let e = $(`.ts[data-c="${i}"]`, text);
+      if (e) e.classList.add("tts-cur");
+      else { e = chunks[i].p >= 0 && $(`p[data-p="${chunks[i].p}"]`, text); if (!e) return; e.classList.add("tts-on"); }
+      if (isPage() && hclip) { const n = pageOf(e); if (n !== page) hGo(n); }
+      else { const r = e.getBoundingClientRect(), s = scroll.getBoundingClientRect(), pb = (ttsEl.hidden ? 0 : ttsEl.offsetHeight) + 50; if (r.top < s.top + 70 || r.bottom > s.bottom - pb) e.scrollIntoView({ block: "center", behavior: "smooth" }); }
+    };
+    T.rewrap = () => { if (!chunks.length) return; wrap(); if (hl >= 0) hi(hl); };
     T.active = () => T.playing || !ttsEl.hidden;
-    T.ui = () => { pl.textContent = T.playing ? "⏸" : "▶"; $("#bh", el).style.color = ttsEl.hidden ? "" : "var(--accent)"; updateMini(); };
+    T.ui = () => { pl.innerHTML = T.playing ? ICON.pause : ICON.play; $("#bh", el).style.color = ttsEl.hidden ? "" : "var(--accent)"; cnt(); updateMini(); };
     const nativeVoices = () => { try { return JSON.parse(native.getVoices()); } catch { return []; } };
     const fillVoices = list => {
       vs.innerHTML = `<option value="">${native ? "Giọng Google mặc định (chị Google)" : "Giọng mặc định"}</option>` + list.map(v => `<option value="${esc(v.name)}">${esc(v.label)}</option>`).join("");
@@ -834,7 +915,7 @@ function openReader(story, toc, startIdx, startP) {
       const at = i => {
         if (g !== gen || !T.playing) return;
         if (i >= chunks.length) return T.finished();
-        pos = i; hi(chunks[i].p); flush();
+        pos = i; hi(i); cnt(); flush();
         const u = new SpeechSynthesisUtterance(chunks[i].t); u.lang = "vi-VN"; u.rate = cfg.rate;
         const v = webVoices.find(x => x.name === vs.value); if (v) u.voice = v;
         u.onend = () => at(i + 1);
@@ -843,17 +924,35 @@ function openReader(story, toc, startIdx, startP) {
       };
       at(from);
     };
+    // chỉ số câu đầu tiên đang hiện trên màn hình (để bấm nghe là đọc từ chỗ đang đọc, không về đầu chương)
+    T.visibleIdx = () => {
+      if (!text) return 0;
+      if (!chunks.length) { chunks = build(); wrap(); }
+      let first = -1;
+      const spans = $$(".ts", text);
+      if (isPage() && hclip) {
+        const cr = hclip.getBoundingClientRect();
+        for (const sp of spans) if ([...sp.getClientRects()].some(r => r.right > cr.left + 2 && r.left < cr.right - 2)) { first = +sp.dataset.c; break; }
+      } else {
+        const top = scroll.getBoundingClientRect().top + 40;
+        for (const sp of spans) if (sp.getBoundingClientRect().bottom > top) { first = +sp.dataset.c; break; }
+      }
+      if (first < 0) { const cp = currentP(); first = chunks.findIndex(c => c.p >= cp && c.p >= 0); }
+      if (first < 0) return 0;
+      const atTop = isPage() ? page === 0 : scroll.scrollTop < 40;
+      return atTop ? 0 : first;       // ở đầu chương thì đọc cả tên chương
+    };
     T.start = from => {
       if (!text) return;
-      flush(); if (!chunks.length) chunks = build();
+      flush(); if (!chunks.length) { chunks = build(); wrap(); }
       if (!chunks.length) { st.textContent = "Chương này chưa có nội dung"; return; }
       pos = Math.min(Math.max(0, from), chunks.length - 1); gen++; T.playing = true; since = Date.now(); st.textContent = ""; T.ui(); engineStart(pos);
       clearInterval(flushT); flushT = setInterval(flush, 15000);
     };
     T.pause = () => { flush(); since = 0; T.playing = false; gen++; if (native) native.pause(); else if (web) web.cancel(); T.ui(); };
-    T.halt = silent => { flush(); since = 0; T.playing = false; gen++; chunks = []; if (!silent) { if (native) native.pause(); else if (web) web.cancel(); } hi(-1); hl = -2; };
+    T.halt = silent => { flush(); since = 0; T.playing = false; gen++; unwrap(); chunks = []; if (!silent) { if (native) native.pause(); else if (web) web.cancel(); } hi(-1); hl = -2; };
     T.stopAll = () => {
-      T.halt(true); if (native) native.stop(); else if (web) web.cancel(); clearTimeout(sleepT); sleepT = null; clearInterval(flushT); ss.value = "0"; ttsEl.hidden = true; T.ui();
+      T.halt(true); if (native) native.stop(); else if (web) web.cancel(); clearTimeout(sleepT); sleepT = null; clearInterval(flushT); ss.value = "0"; tlab(); ttsEl.hidden = true; $(".tts-more", el).hidden = true; T.ui();
     };
     T.finished = async () => {
       hi(-1); hl = -2; flush();
@@ -872,11 +971,16 @@ function openReader(story, toc, startIdx, startP) {
     const toggle = () => T.playing ? T.pause() : T.start(pos);
     T.toggle = toggle;
     pl.onclick = toggle;
-    $("#tn", el).onclick = () => { const i = paraStart(1); if (i < 0) T.finished(); else T.start(i); };
-    $("#tp", el).onclick = () => T.start(paraStart(-1));
+    $("#tn", el).onclick = () => { if (pos + 1 >= chunks.length) T.finished(); else T.start(pos + 1); };
+    $("#tp", el).onclick = () => T.start(Math.max(0, pos - 1));
+    $("#tnc", el).onclick = () => { if (idx < toc.length - 1) goTo(idx + 1, { play: true }); else toast("Hết truyện"); };
+    $("#tpc", el).onclick = () => { if (idx > 0) goTo(idx - 1, { play: true }); else T.start(0); };
+    const more = $(".tts-more", el);
+    $("#tspd", el).onclick = $("#tvc", el).onclick = () => { more.hidden = !more.hidden; };
+    $("#tset", el).onclick = () => $("#ba", el).click();
     $("#tx", el).onclick = () => { T.stopAll(); if (bg === el) closeBg(); };
     const rv = $("#trv", el);
-    const setRate = v => { cfg.rate = clampRate(v); rs.value = String(cfg.rate); rv.textContent = fmtRate(cfg.rate); };
+    const setRate = v => { cfg.rate = clampRate(v); rs.value = String(cfg.rate); rv.textContent = fmtRate(cfg.rate); $("#tspd", el).textContent = cfg.rate.toFixed(2).replace(".", ",") + "x"; };
     setRate(cfg.rate);
     rs.oninput = () => setRate(rs.value);                                   // kéo: chỉ cập nhật số hiển thị
     rs.onchange = () => { saveCfg(); if (T.playing) T.start(pos); };        // thả tay: áp dụng ngay
@@ -885,7 +989,7 @@ function openReader(story, toc, startIdx, startP) {
     $("#trm", el).onclick = () => nudge(-0.01);
     $("#trp", el).onclick = () => nudge(0.01);
     vs.onchange = () => { cfg.voice = vs.value; saveCfg(); if (native) native.setVoice(vs.value); if (T.playing) T.start(pos); };
-    ss.onchange = () => { clearTimeout(sleepT); const m = +ss.value; if (m > 0) sleepT = setTimeout(() => { T.pause(); st.textContent = "Đã hết giờ hẹn"; ss.value = "0"; }, m * 60000); };
+    ss.onchange = () => { clearTimeout(sleepT); const m = +ss.value; tlab(); if (m > 0) sleepT = setTimeout(() => { T.pause(); st.textContent = "Đã hết giờ hẹn"; ss.value = "0"; tlab(); }, m * 60000); };
     $("#bh", el).onclick = () => {
       if (!ttsEl.hidden) { T.stopAll(); return; }
       if (!native && !web) { toast("Máy không hỗ trợ đọc truyện"); return; }
@@ -894,12 +998,12 @@ function openReader(story, toc, startIdx, startP) {
         native.requestNotificationPermission();
         if (!native.hasGoogleTts() && confirm("Máy chưa cài Google TTS (giọng chị Google).\nMở Google Play để cài?")) { native.installGoogleTts(); ttsEl.hidden = true; return; }
       }
-      T.start(0);
+      T.start(T.visibleIdx());
     };
     if (native) {
       fillVoices(nativeVoices());
       window.__ttsNative = {
-        onStart(g, i) { if (g !== gen || !T.playing) return; pos = i; hi(chunks[i] ? chunks[i].p : -1); flush(); },
+        onStart(g, i) { if (g !== gen || !T.playing) return; pos = i; hi(i); cnt(); flush(); },
         onDone(g) { if (g === gen && T.playing) T.finished(); },
         onError(g, m) { if (g === gen && T.playing) { T.pause(); st.textContent = m === "nolang" ? "Máy chưa có giọng tiếng Việt" : "Lỗi đọc"; if (m === "nolang" && confirm("Máy chưa cài giọng tiếng Việt cho Google TTS.\nMở cài đặt giọng nói để tải?")) native.openSettings(); } },
         onCmd(c) {
@@ -940,6 +1044,7 @@ function openReader(story, toc, startIdx, startP) {
     if (tab === "lib" && !stack.length) renderLib();
   };
   ls.set("last", { id: story.id });
+  applyRead(); setRbh();
   load(idx, startP).then(() => { if (!startP) toast(isPage() ? "Chạm mép trái/phải hoặc vuốt để lật trang · chạm giữa để mở menu" : "Chạm vào giữa màn hình để hiện/ẩn menu"); });
 }
 

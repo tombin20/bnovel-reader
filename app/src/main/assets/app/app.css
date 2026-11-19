@@ -342,3 +342,59 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;heigh
 .back[data-theme]:not([data-theme=march7]) .btn.solid{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--onacc)}
 .back[data-theme=march7] .sheet{background:var(--bgimg)}
 .themes + .chips{margin:10px 0 0}
+
+/* ===== v2.12: màu chữ khi đọc + giao diện đọc/nghe kiểu vBook ===== */
+/* Lỗi cũ: .rd không có color riêng nên chữ kế thừa màu của giao diện ỨNG DỤNG (vd chữ tím trên nền đọc tối).
+   Giờ chữ đọc luôn theo giao diện ĐỌC: nền tối -> chữ trắng, nền sáng -> chữ đen. */
+.rd[data-theme=dark],.rd[data-theme=black],.back[data-theme=dark],.back[data-theme=black]{--rfg:#fff}
+.rd[data-theme=light],.rd[data-theme=sepia],.rd[data-theme=march7],.back[data-theme=light],.back[data-theme=sepia],.back[data-theme=march7]{--rfg:#000}
+.rd,.back[data-theme]{color:var(--rfg,var(--fg))}
+.rd .rch,.rd .rtext p,.rd .hcols p,.rd .rt,.rd .rend,.back[data-theme] .sheet,.back[data-theme] .ch{color:inherit}
+.rd .rbot button,.rd .tts button,.rd .rtop button{color:var(--rfg,var(--fg))}
+.rd .tts .pl{color:var(--onacc)}
+.rd .tts select,.back[data-theme] .sheet select,.back[data-theme] .stp button{color:var(--rfg,var(--fg))}
+.back[data-theme] .ch.cur,.back[data-theme] .chip.on{color:var(--accent)}
+.back[data-theme] .chip{color:var(--muted)}
+.themes button{font:700 17px/1 var(--font,serif);display:grid;place-items:center}
+.rdim{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;z-index:2}
+
+/* thanh dưới: % tiến độ + thanh kéo chương + 4 nút (giống vBook) */
+.rbot{display:block;padding:8px 14px calc(8px + env(safe-area-inset-bottom,0px))}
+.rbot .rinfo{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted);padding:0 4px}
+.rbot .rinfo span:last-child{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:right}
+.rbot .rsl{display:flex;align-items:center;gap:10px;margin:2px 0 4px}
+.rbot .rsl button{min-width:0;height:auto;padding:6px 8px;font-size:14px;display:block;border-radius:8px}
+.rbot .rsl input{flex:1;min-width:0;padding:0;border:0;background:none;accent-color:var(--accent);height:28px}
+.rbot .rbtns{display:flex;justify-content:space-around}
+.rbot .rbtns button{min-width:56px;height:44px}
+
+/* bảng nghe: nằm trên thanh dưới, vẫn hiện khi ẩn menu */
+.tts{bottom:var(--rbh,120px);padding:12px 14px calc(10px);gap:8px;z-index:4}
+.rd.hide .tts{transform:translateY(var(--rbh,120px))}
+.tts .tmain{justify-content:space-between;padding:0 6px}
+.tts .tmain button{width:48px;height:48px;min-width:0;padding:0;border-radius:50%;display:grid;place-items:center;border:0;background:transparent}
+.tts .tmain .pl{width:60px;height:60px;box-shadow:0 6px 18px var(--accglow)}
+.tts svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tts .tmain .pl svg{width:30px;height:30px}
+.tts .topt{justify-content:space-between;padding:0 4px}
+.tts .topt button,.tts .tsel{height:40px;min-width:44px;padding:0 10px;border:0;background:transparent;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:14px;font-weight:700}
+.tts .topt svg{width:22px;height:22px}
+.tts .tsel{position:relative;color:var(--rfg,var(--fg))}
+.tts .tsel select{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0}
+.tts .tsel span{font-size:12px;font-weight:600}
+.tts .topt .spd{color:var(--accent);font-variant-numeric:tabular-nums}
+.tts .tts-more{display:flex;flex-direction:column;gap:6px}.tts .tts-more[hidden]{display:none}
+.tts .tinfo{justify-content:space-between;font-size:11.5px;color:var(--muted);padding:0 4px}
+.tts .tinfo small{white-space:nowrap}
+.tts .tinfo #tst{flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis}
+
+/* tô sáng đúng CÂU đang đọc (kiểu vBook) */
+.ts{border-radius:4px;-webkit-box-decoration-break:clone;box-decoration-break:clone;transition:background-color .15s}
+.ts.tts-cur{background:rgba(160,160,160,.38);box-shadow:0 0 0 2px rgba(160,160,160,.38)}
+.rd[data-theme=march7] .ts.tts-cur{background:rgba(236,127,178,.32);box-shadow:0 0 0 2px rgba(236,127,178,.32)}
+.stp.bri input{flex:1;padding:0;border:0;background:none;accent-color:var(--accent)}
+.tts .tmain .pl{background:linear-gradient(135deg,var(--accent),var(--accent2))}
+.rbot .rsl input[type=range],.stp.bri input[type=range]{-webkit-appearance:none;appearance:none;background:transparent}
+.rbot .rsl input[type=range]::-webkit-slider-runnable-track,.stp.bri input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--line)}
+.rbot .rsl input[type=range]::-webkit-slider-thumb,.stp.bri input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;margin-top:-7px;border-radius:50%;background:var(--accent);box-shadow:0 1px 6px rgba(0,0,0,.4)}
+.stp.bri label{flex:none;min-width:72px}

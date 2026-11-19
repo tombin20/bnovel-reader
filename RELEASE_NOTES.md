@@ -1,4 +1,8 @@
 ## Có gì mới
+- **Giao diện nghe kiểu vBook:** bảng điều khiển mới gồm 5 nút (chương trước, câu trước, phát/dừng, câu sau, chương sau), hẹn giờ tắt, tốc độ, giọng đọc, cài đặt đọc và bộ đếm câu / chương ngay trên bảng
+- **Tô sáng đúng câu đang đọc** thay vì cả đoạn, tự cuộn theo câu, không bị bảng điều khiển che
+- **Thanh dưới trang đọc kiểu vBook:** hiện % tiến độ và tên chương, thanh kéo để nhảy nhanh giữa các chương (có nút Trước / Tiếp), 4 nút: mục lục, chế độ đọc, nghe, cài đặt
+- **Cài đặt đọc mới:** chỉnh độ sáng, chọn màu chữ (mặc định, trắng, đen, vàng nhạt, xám), các ô giao diện hiện chữ Aa
 - **Giao diện hoàn toàn mới:** kính mờ, chuyển cảnh mượt, thanh tab có biểu tượng mới, trang truyện có nền mờ theo ảnh bìa, thanh trạng thái Android đổi màu theo giao diện
 - **Lật trang ngang mượt:** trang trượt theo ngón tay, chạm mép để lật
 - **Giao diện đọc kiểu vBook:** lùi đầu dòng, tên chương căn giữa, hiện tên chương và số trang ở đầu và chân trang
@@ -10,5 +14,7 @@
 - **Tự báo bản cập nhật** mỗi khi bạn mở app
 
 ## Sửa lỗi
+- Sửa lỗi bấm nghe là đọc lại từ đầu chương: giờ đang đọc ở trang nào (hoặc đoạn nào khi cuộn dọc) thì nghe từ đúng câu đầu tiên đang hiện trên màn hình
+- Sửa lỗi chữ khi đọc rất khó nhìn khi giao diện ứng dụng và giao diện đọc khác nhau (ví dụ chữ tím trên nền đọc tối). Giờ nền đọc tối luôn dùng chữ trắng, nền đọc sáng luôn dùng chữ đen
 - Sửa lỗi không xóa được truyện đã tải
 - Sửa lỗi văng app khi thoát khỏi màn hình đọc

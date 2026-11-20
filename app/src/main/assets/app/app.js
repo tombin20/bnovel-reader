@@ -25,6 +25,9 @@ const ICON = {
   power: SV('<path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1011.4 0"/>'),
   voice: SV('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>'),
   gear: SV('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>'),
+  filter: SV('<path d="M4 5.5h16l-6.2 7.3v5.4l-3.6 1.8v-7.2z"/>'),
+  more: SV('<circle cx="12" cy="5" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="19" r="1.7" fill="currentColor"/>'),
+  user: SV('<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-5.5 8-5.5s6.5 1.5 8 5.5"/>'),
   search: SV('<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>'),
   scrollV: SV('<path d="M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4"/>'),
   pageH: SV('<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>'),
@@ -293,8 +296,9 @@ const wifiOk = () => { const c = navigator.connection; if (!c) return true; if (
 const IMG_RE = /^!\[\]\((.+)\)$/;
 const renderContent = text => String(text || "").split(/\n+/).map(l => l.trim()).filter(Boolean).map((l, i) => {
   const m = l.match(IMG_RE);
-  return m ? `<img data-p="${i}" src="${esc(img(m[1], 1400))}" alt="">` : `<p data-p="${i}">${esc(l)}</p>`;
+  return m ? `<div class="pimg" data-p="${i}"><img src="${esc(img(m[1], 1400))}" alt=""></div>` : `<p data-p="${i}">${esc(l)}</p>`;
 }).join("");
+const imgOnly = text => { const l = String(text || "").split(/\n+/).map(x => x.trim()).filter(Boolean); return l.length > 0 && l.every(x => IMG_RE.test(x)); };
 const imgsOf = text => String(text || "").split(/\n+/).map(l => (l.trim().match(IMG_RE) || [])[1]).filter(Boolean);
 
 // ---------- Thống kê thời gian ----------
@@ -307,7 +311,7 @@ function addTime(story, kind, sec) {
   s.title = story.title; s.cover = story.cover;
   if (kind) s.l += sec; else s.r += sec;
   const d = days[dayKey()] || (days[dayKey()] = [0, 0]); d[kind] += sec;
-  statDirty = true; statSyncDirty = true; goalCheck();
+  statDirty = true; statSyncDirty = true;
 }
 setInterval(() => { if (statDirty) { statDirty = false; ls.set("stats", stats); ls.set("days", days); } }, 5000);
 document.addEventListener("visibilitychange", () => {
@@ -388,21 +392,6 @@ async function sync(manual) {
 }
 function setSyncIcon(on) { const b = $("#syncb"); if (b) b.classList.toggle("spin", on); }
 
-// ---------- Mục tiêu đọc mỗi ngày + chuỗi ngày ----------
-const keyOf = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-const dayTotal = k => { const d = days[k]; return d ? d[0] + d[1] : 0; };
-function goalCheck() {
-  const g = +cfg.goal; if (!g) return; const k = dayKey();
-  if (ls.get("goalHit", "") === k) return;
-  if (dayTotal(k) >= g * 60) { ls.set("goalHit", k); toast("🎯 Đạt mục tiêu hôm nay!"); }
-}
-function streak() {
-  const need = (+cfg.goal || 1) * 60, d = new Date(); let n = 0;
-  if (dayTotal(keyOf(d)) < need) d.setDate(d.getDate() - 1);
-  while (dayTotal(keyOf(d)) >= need && n < 3650) { n++; d.setDate(d.getDate() - 1); }
-  return n;
-}
-
 // ---------- Sách nói: bỏ qua đoạn + từ điển phát âm ----------
 function skipFn() {
   const rs = (cfg.skip || "").split("\n").map(x => x.trim()).filter(Boolean).map(l => {
@@ -434,8 +423,6 @@ function openTtsRules(theme) {
 // ---------- Đánh dấu / ghi chú, nhãn tủ sách ----------
 let bm = ls.get("bm", {});                 // {sid:[{pos,ct,p,txt,note,t}]}
 const saveBm = () => ls.set("bm", bm);
-let tags = ls.get("tags", {});             // {sid:{k:"later"|"done",title,cover,chapters}}
-const TAGN = { later: "Đọc sau", done: "Đã xong" };
 function copyText(t) {
   const fb = () => { const a = document.createElement("textarea"); a.value = t; a.style.cssText = "position:fixed;opacity:0"; document.body.append(a); a.select(); try { document.execCommand("copy"); } catch {} a.remove(); };
   try { if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t).catch(fb); } catch {}
@@ -482,17 +469,18 @@ function updateMini() {
 function closeBg() { const e = bg; if (!e) return; bg = null; updateMini(); if (e.onclose) e.onclose(); e.remove(); }
 $("#mpl").onclick = () => { if (bg) bg._api.toggle(); };
 $("#mx").onclick = closeBg;
-$("#mini .mt").onclick = () => { if (!bg) return; const e = bg; bg = null; e.style.display = ""; stack.push(e); updateMini(); };
+$("#mini .mt").onclick = () => { if (!bg) return; const e = bg; bg = null; e.style.display = ""; stack.push(e); updateMini(); applyBars(); try { e._api.relayout(); } catch {} };
 
-const titles = { lib: "Tủ sách", home: "Khám phá", genre: "Thể loại", stat: "Thống kê", set: "Cài đặt" };
+const titles = { lib: "Tủ sách", home: "Khám phá", stat: "Thống kê", set: "Cài đặt" };
 function go(t) {
   tab = t;
-  $("#ttl").textContent = titles[t];
-  $("#syncb").hidden = !acct || t !== "lib";
+  const lib = t === "lib";
+  $("#ttl").textContent = titles[t]; $("#ttl").hidden = lib; $("#top").classList.toggle("libtop", lib);
+  $("#ltabs").hidden = !lib; $("#avt").hidden = !lib; $("#srchb").hidden = !lib; $("#moreb").hidden = !lib; $("#syncb").hidden = true;
   $$("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   view.scrollTop = 0;
   view.classList.remove("swap"); void view.offsetWidth; view.classList.add("swap");
-  ({ lib: renderLib, home: renderHome, genre: renderGenres, stat: renderStats, set: renderSettings })[t]();
+  ({ lib: renderLib, home: renderHome, stat: renderStats, set: renderSettings })[t]();
 }
 $("#tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) { while (stack.length) pop(); go(b.dataset.tab); } });
 $("#syncb").onclick = () => sync(true);
@@ -502,22 +490,15 @@ app.addEventListener("click", e => {
   const r = e.target.closest("[data-resume]"); if (r && !e.target.closest("[data-del]")) resume(+r.dataset.resume);
 });
 
-const pctTxt = v => (+v).toFixed(1).replace(".", ",") + "%";
-function cardStat(s) {             // "247C - 86,2%": số chương + % đã đọc (như vBook)
-  const h = hist[s.id], n = +s.chapters || (h && h.n) || (dl[s.id] && dl[s.id].chapters.length) || 0;
-  let pc = null;
-  if (h) pc = h.pc != null ? h.pc : (n ? Math.min(100, h.pos / n * 100) : null);
-  else if (s.t !== undefined && n) pc = 0;
-  return [n ? n + "C" : "", pc == null ? "" : pctTxt(pc)].filter(Boolean).join(" - ");
-}
-const card = (s, mode) => `<button class="card" ${mode === "resume" ? `data-resume="${s.id}"` : `data-id="${s.id}"`}><div class="cvw"><img class="cv" loading="lazy" src="${esc(img(s.cover, 400))}" alt="">
-  ${cardStat(s) ? `<span class="cst">${cardStat(s)}</span>` : ""}<span class="bd">${fav.some(f => f.id === s.id) ? "♥" : ""}${dl[s.id] ? "⬇" : ""}</span>${tags[s.id] ? `<span class="tg ${tags[s.id].k}">${TAGN[tags[s.id].k]}</span>` : ""}
-  <div class="ctl"><span>${esc(s.title)}</span></div></div></button>`;
+const card = (s, mode) => {
+  const bd = (fav.some(f => f.id === s.id) && !(tab === "lib" && libTab === "shelf") ? "♥" : "") + (dl[s.id] ? "⬇" : "");
+  return `<button class="card" ${mode === "resume" ? `data-resume="${s.id}"` : `data-id="${s.id}"`}><div class="cvw"><img class="cv" loading="lazy" src="${esc(img(s.cover, 400))}" alt="">${bd ? `<span class="bd">${bd}</span>` : ""}</div><b>${esc(s.title)}</b></button>`;
+};
 const grid = (l, mode) => l.map(s => card(s, mode)).join("");
-const skel = (n = 9) => Array.from({ length: n }, () => `<div class="card sk"><div class="cvw"><div class="cv"></div></div></div>`).join("");
+const skel = (n = 9) => Array.from({ length: n }, () => `<div class="card sk"><div class="cvw"><div class="cv"></div></div><b></b></div>`).join("");
 
 // ---------- Tủ sách (trang chủ) ----------
-let libTab = "all", libQ = "", libSort = "recent";
+let libTab = "shelf", libQ = "", libSort = "recent", libSearch = false;
 function shelf() {
   const m = new Map();
   fav.forEach(f => m.set(f.id, { id: f.id, title: f.title, cover: f.cover, chapters: f.chapters, t: 0 }));
@@ -534,58 +515,71 @@ function libSortL(l, keepOrder) {          // lọc theo ô tìm kiếm + sắp 
   else if (!keepOrder) r.sort((a, b) => tOf(b) - tOf(a));
   return r;
 }
-function openTagMenu(id) {
-  const x = shelf().find(v => v.id === id) || tags[id]; if (!x) return;
-  const cur = tags[id] ? tags[id].k : "";
-  const sh = openSheet(`<h3>${esc(x.title)}</h3><div class="menu">
-    <button data-k="later">${cur === "later" ? "✓ " : ""}Đọc sau</button><button data-k="done">${cur === "done" ? "✓ " : ""}Đã đọc xong</button>
-    ${cur ? `<button data-k="none">Bỏ nhãn</button>` : ""}<button data-k="open">Mở truyện</button></div>`);
-  $$("[data-k]", sh).forEach(b => b.onclick = () => {
-    const k = b.dataset.k; closeSheet();
-    if (k === "open") return openStory(id);
-    if (k === "none") delete tags[id]; else tags[id] = { k, title: x.title, cover: x.cover, chapters: x.chapters };
-    ls.set("tags", tags); renderLib();
-  });
+function renderAvatar() {
+  const b = $("#avt"); if (!b) return;
+  const u = acct && acct.user, pic = u && (u.avatar || u.picture || u.avatar_url);
+  b.innerHTML = pic ? `<img src="${esc(pic)}" alt="">` : u && u.name ? esc(String(u.name).trim().charAt(0).toUpperCase()) : ICON.user;
+}
+function openLibMenu() {
+  const opt = (k, n) => `<button data-sort="${k}">${libSort === k ? "✓ " : ""}${n}</button>`;
+  const sh = openSheet(`<h3>Sắp xếp kệ sách</h3><div class="menu">${opt("recent", "Đọc gần đây")}${opt("name", "Tên A → Z")}${opt("prog", "Tiến độ đọc")}${acct ? `<button id="lsync">⟳ Đồng bộ với tài khoản</button>` : ""}</div>`);
+  $$("[data-sort]", sh).forEach(b => b.onclick = () => { libSort = b.dataset.sort; closeSheet(); renderLib(); });
+  if ($("#lsync", sh)) $("#lsync", sh).onclick = () => { closeSheet(); sync(true); };
+}
+// màn hình Tải xuống (bấm avatar): chỉ dùng được khi đã đăng nhập
+function openDownloads() {
+  const el = push(h(`<div><div class="bar"><button class="bk" aria-label="Quay lại">${ICON.back}</button><div class="dltab"><b>Tải xuống</b></div></div><div class="body"></div></div>`));
+  $(".bk", el).onclick = pop;
+  const body = $(".body", el);
+  const draw = () => {
+    const l = Object.values(dl);
+    if (!l.length) {
+      body.innerHTML = acct
+        ? `<p class="empty">Chưa tải truyện nào.<br>Mở một truyện rồi bấm <b>⬇ Tải xuống</b> để đọc offline.</p>`
+        : `<p class="empty">Tải truyện để đọc offline cần đăng nhập.<br>Liên kết tài khoản B-novel trong Cài đặt để dùng tính năng này.</p><div style="display:flex;justify-content:center"><button class="btn solid" id="dlgo">Đến phần liên kết</button></div>`;
+      if ($("#dlgo", body)) $("#dlgo", body).onclick = () => { while (stack.length) pop(); go("set"); };
+      return;
+    }
+    body.innerHTML = l.map(d => `<div class="li" data-id="${d.story.id}"><img src="${esc(img(d.story.cover, 400))}" alt=""><div class="t"><b>${esc(d.story.title)}</b><small>${d.have.length}/${d.chapters.length} chương${jobs[d.story.id] ? " · đang tải..." : ""}</small></div><button class="x" data-del="${d.story.id}">🗑</button></div>`).join("")
+      + (acct ? "" : `<p class="muted" style="text-align:center;margin-top:14px">Cần đăng nhập để tải thêm truyện.</p>`);
+    $$("[data-del]", body).forEach(b => b.onclick = async e => { e.stopPropagation(); if (!confirm("Xóa các chương đã tải của truyện này?")) return; await deleteDl(+b.dataset.del); draw(); });
+  };
+  draw();
 }
 function renderLib() {
-  const tabs = [["all", "Tất cả"], ["hist", "Đang đọc"], ["fav", "Theo dõi"], ["dl", "Đã tải"], ["later", "Đọc sau"], ["done", "Đã xong"]];
-  const empty = `<p class="empty">Kệ sách còn trống.<br>Qua tab <b>Khám phá</b> để chọn truyện, bấm ♡ để thêm vào đây.</p>`;
+  $$("#ltabs button").forEach(b => b.classList.toggle("on", b.dataset.lt === libTab));
+  renderAvatar();
   const noMatch = `<p class="empty">Không tìm thấy truyện nào</p>`;
-  const rows = (l, delIcon, getS, sub) => l.map(x => { const st = getS(x); return `<div class="li" ${libTab === "dl" ? `data-id="${st.id}"` : `data-resume="${st.id}"`}><img src="${esc(img(st.cover, 400))}" alt=""><div class="t"><b>${esc(st.title)}</b><small>${esc(sub(x))}</small></div>${tags[st.id] ? `<span class="tg ${tags[st.id].k}">${TAGN[tags[st.id].k]}</span>` : ""}<button class="x" data-del="${st.id}">${delIcon}</button></div>`; }).join("");
   const bodyHtml = () => {
-    if (libTab === "all") { const l = libSortL(shelf()); return l.length ? `<div class="grid">${grid(l)}</div>` : (libQ ? noMatch : empty); }
-    if (libTab === "fav") { const l = libSortL(fav, true); return l.length ? `<div class="grid">${grid(l)}</div>` : (libQ ? noMatch : `<p class="empty">Chưa theo dõi truyện nào</p>`); }
-    if (libTab === "hist") { const l = libSortL(Object.values(hist)); return l.length ? rows(l, "✕", x => x, x => x.ct || "") : (libQ ? noMatch : `<p class="empty">Chưa có lịch sử đọc</p>`); }
-    if (libTab === "dl") { const l = libSortL(Object.values(dl).map(d => ({ id: d.story.id, title: d.story.title, cover: d.story.cover, chapters: d.chapters.length, d }))); return l.length ? rows(l, "🗑", x => x, x => `${x.d.have.length}/${x.d.chapters.length} chương`) : (libQ ? noMatch : `<p class="empty">Chưa tải truyện nào.<br>Mở truyện rồi bấm ⬇ để đọc offline (cả chữ lẫn ảnh).</p>`); }
-    const k = libTab, l = libSortL(Object.entries(tags).filter(([, v]) => v.k === k).map(([id, v]) => ({ id: +id, title: v.title, cover: v.cover, chapters: v.chapters, ct: hist[id] ? hist[id].ct : "" })));
-    return l.length ? `<div class="grid">${grid(l)}</div>` : (libQ ? noMatch : `<p class="empty">Chưa có truyện nào.<br>Giữ lâu một truyện để gắn nhãn “${TAGN[k]}”.</p>`);
+    if (libTab === "shelf") {
+      const l = libSortL(fav);
+      return l.length ? `<div class="grid">${grid(l)}</div>` : (libQ ? noMatch : `<p class="empty">Kệ sách còn trống.<br>Mở một truyện rồi bấm <b>♡ Theo dõi</b> để thêm vào đây.</p>`);
+    }
+    const ids = new Set(fav.map(f => f.id)), l = libSortL(Object.values(hist).filter(x => !ids.has(x.id)));
+    return l.length ? l.map(x => `<div class="li" data-resume="${x.id}"><img src="${esc(img(x.cover, 400))}" alt=""><div class="t"><b>${esc(x.title)}</b><small>${esc(x.ct || "")}</small></div><button class="x" data-fol="${x.id}" aria-label="Theo dõi">♡</button><button class="x" data-del="${x.id}" aria-label="Xóa">✕</button></div>`).join("")
+      : (libQ ? noMatch : `<p class="empty">Chưa có truyện nào.<br>Truyện bạn đã đọc nhưng chưa theo dõi sẽ hiện ở đây.</p>`);
   };
-  view.innerHTML = `<div class="libhead"><input id="libq" type="search" placeholder="Tìm trong tủ sách" value="${esc(libQ)}"><select id="libs"><option value="recent">Gần đây</option><option value="name">Tên A→Z</option><option value="prog">Tiến độ</option></select></div>
-    <div class="chips" style="margin-bottom:12px">${tabs.map(([k, n]) => `<button class="chip ${k === libTab ? "on" : ""}" data-lt="${k}">${n}</button>`).join("")}</div><div id="libbody">${bodyHtml()}</div>`;
-  $("#libs").value = libSort;
-  const bindBody = () => $$("[data-del]", view).forEach(b => b.onclick = async e => {
-    e.stopPropagation(); const id = +b.dataset.del;
-    if (libTab === "hist") { delete hist[id]; ls.set("hist", hist); if (acct) pushOp("DELETE", "/api/history?story=" + id); }
-    if (libTab === "dl") { if (!confirm("Xóa các chương đã tải của truyện này?")) return; await deleteDl(id); }
-    renderLib();
-  });
+  view.innerHTML = `${libSearch ? `<div class="libsearch"><input id="libq" type="search" placeholder="Tìm theo tên truyện" value="${esc(libQ)}"></div>` : ""}<div id="libbody">${bodyHtml()}</div>`;
+  const bindBody = () => {
+    $$("[data-del]", view).forEach(b => b.onclick = e => {
+      e.stopPropagation(); const id = +b.dataset.del; delete hist[id]; ls.set("hist", hist);
+      if (acct) pushOp("DELETE", "/api/history?story=" + id); renderLib();
+    });
+    $$("[data-fol]", view).forEach(b => b.onclick = e => {
+      e.stopPropagation(); const id = +b.dataset.fol, x = hist[id]; if (!x || fav.some(f => f.id === id)) return;
+      fav = [{ id, title: x.title, cover: x.cover, chapters: x.n }, ...fav]; ls.set("fav", fav);
+      pushOp("PUT", "/api/follow?story=" + id, {}); toast("Đã thêm vào kệ sách"); renderLib();
+    });
+  };
   bindBody();
-  let qT; $("#libq").oninput = e => { libQ = e.target.value; clearTimeout(qT); qT = setTimeout(() => { $("#libbody").innerHTML = bodyHtml(); bindBody(); }, 120); };
-  $("#libs").onchange = e => { libSort = e.target.value; renderLib(); };
-  $$("[data-lt]", view).forEach(b => b.onclick = () => { libTab = b.dataset.lt; renderLib(); });
-  if (!view._lp) {                       // giữ lâu một truyện: gắn nhãn
-    view._lp = 1; let t = 0, pt = null;
-    view.addEventListener("touchstart", e => {
-      const c = e.target.closest(".card,.li"); if (!c || tab !== "lib" || e.touches.length !== 1) return;
-      const id = +(c.dataset.id || c.dataset.resume); if (!id) return; pt = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      clearTimeout(t); t = setTimeout(() => { if (!pt) return; view._lpAt = Date.now(); if (navigator.vibrate) navigator.vibrate(15); openTagMenu(id); }, 550);
-    }, { passive: true });
-    view.addEventListener("touchmove", e => { if (pt && Math.hypot(e.touches[0].clientX - pt.x, e.touches[0].clientY - pt.y) > 10) { clearTimeout(t); pt = null; } }, { passive: true });
-    ["touchend", "touchcancel"].forEach(ev => view.addEventListener(ev, () => { clearTimeout(t); pt = null; }, { passive: true }));
-    view.addEventListener("contextmenu", e => { if (e.target.closest(".card,.li")) e.preventDefault(); });
-    view.addEventListener("click", e => { if (Date.now() - (view._lpAt || 0) < 700) { e.stopPropagation(); e.preventDefault(); } }, true);
-  }
+  const q = $("#libq"); let qT;
+  if (q) q.oninput = e => { libQ = e.target.value; clearTimeout(qT); qT = setTimeout(() => { $("#libbody").innerHTML = bodyHtml(); bindBody(); }, 120); };
 }
+$("#avt").onclick = openDownloads;
+$("#srchb").onclick = () => { libSearch = !libSearch; if (!libSearch) libQ = ""; renderLib(); if (libSearch) setTimeout(() => { const q = $("#libq"); if (q) q.focus(); }, 60); };
+$("#moreb").onclick = openLibMenu;
+$$("#ltabs button").forEach(b => b.onclick = () => { libTab = b.dataset.lt; renderLib(); });
+$("#srchb").innerHTML = ICON.search; $("#moreb").innerHTML = ICON.more;
 async function deleteDl(id) {
   const d = dl[id]; if (!d) return;
   if (window.AndroidDl) { try { window.AndroidDl.remove(+id); } catch {} delete jobs[id]; }
@@ -597,27 +591,63 @@ async function deleteDl(id) {
   delete dl[id]; ls.set("dl", dl);
 }
 
-// ---------- Khám phá ----------
+// ---------- Khám phá (có bộ lọc thể loại + series) ----------
+const exF = { genres: new Set(), series: "" };
+let genresCache = null; const genreIds = {};
+async function getGenres() { if (!genresCache) genresCache = (await api("/api/genres")).genres || []; return genresCache; }
+async function idsOfGenre(g) { if (!genreIds[g]) genreIds[g] = new Set(((await api("/api/stories?genre=" + encodeURIComponent(g))).stories || []).map(x => x.id)); return genreIds[g]; }
 async function renderHome() {
-  view.innerHTML = `<div class="search"><input id="q" type="search" placeholder="Tìm truyện..."></div><div id="list" class="grid">${skel()}</div>`;
+  view.innerHTML = `<div class="exbar"><div class="search"><input id="q" type="search" placeholder="Tìm truyện..."></div><button id="flt" class="fbtn" aria-label="Lọc">${ICON.filter}<i class="fb" hidden></i></button></div><div id="fchips" class="chips fch" hidden></div><div id="list" class="grid">${skel()}</div>`;
   let all;
   try { all = await stories(); } catch (e) { $("#list").innerHTML = `<p class="err" style="grid-column:1/-1">${esc(e.message)}<br><button class="btn" id="retry">Thử lại</button></p>`; $("#retry").onclick = renderHome; return; }
-  const draw = q => {
-    const k = norm(q), f = k ? all.filter(s => norm(s.title + " " + (s.alts || "") + " " + (s.series || "")).includes(k)) : all;
-    $("#list").innerHTML = f.length ? grid(f) : `<p class="empty" style="grid-column:1/-1">Không tìm thấy truyện</p>`;
+  let tok = 0;
+  const nF = () => exF.genres.size + (exF.series ? 1 : 0);
+  const chips = () => {
+    const box = $("#fchips"), n = nF(); $(".fb", view).hidden = !n; $(".fb", view).textContent = n;
+    box.hidden = !n;
+    box.innerHTML = [...exF.genres].map(g => `<button class="chip on" data-rg="${esc(g)}">${esc(g)} ✕</button>`).join("") + (exF.series ? `<button class="chip on" data-rs="1">Series: ${esc(exF.series)} ✕</button>` : "") + (n > 1 ? `<button class="chip" data-clr="1">Xóa lọc</button>` : "");
+    $$("[data-rg]", box).forEach(b => b.onclick = () => { exF.genres.delete(b.dataset.rg); draw(); });
+    if ($("[data-rs]", box)) $("[data-rs]", box).onclick = () => { exF.series = ""; draw(); };
+    if ($("[data-clr]", box)) $("[data-clr]", box).onclick = () => { exF.genres.clear(); exF.series = ""; draw(); };
   };
-  draw(""); $("#q").oninput = e => draw(e.target.value);
+  async function draw() {
+    const my = ++tok; chips();
+    const k = norm($("#q").value); let f = all;
+    if (exF.series) f = f.filter(s => s.series === exF.series);
+    if (exF.genres.size) {
+      $("#list").innerHTML = skel();
+      try { const sets = await Promise.all([...exF.genres].map(idsOfGenre)); f = f.filter(s => sets.every(set => set.has(s.id))); }
+      catch (e) { if (my === tok) $("#list").innerHTML = `<p class="err" style="grid-column:1/-1">${esc(e.message)}</p>`; return; }
+    }
+    if (my !== tok) return;
+    if (k) f = f.filter(s => norm(s.title + " " + (s.alts || "") + " " + (s.series || "")).includes(k));
+    $("#list").innerHTML = f.length ? grid(f) : `<p class="empty" style="grid-column:1/-1">Không tìm thấy truyện</p>`;
+  }
+  draw(); $("#q").oninput = () => draw();
+  $("#flt").onclick = async () => {
+    const sel = { genres: new Set(exF.genres), series: exF.series };
+    const sc = {}; all.forEach(s => { if (s.series) sc[s.series] = (sc[s.series] || 0) + 1; });
+    const seriesList = Object.entries(sc).sort((a, b) => String(a[0]).localeCompare(String(b[0]), "vi"));
+    let gl = []; try { gl = await getGenres(); } catch {}
+    const sh = openSheet(`<div class="set"><h3>Lọc truyện</h3>
+      <div class="stp"><label>Thể loại</label></div><div class="chips" id="gch"></div>
+      ${seriesList.length ? `<div class="stp"><label>Series</label></div>${seriesList.length > 10 ? `<input id="sq" type="search" placeholder="Tìm series..." style="width:100%;margin-bottom:8px">` : ""}<div class="chips" id="sch"></div>` : ""}
+      <div class="r"><button class="btn" id="fclr">Xóa lọc</button><button class="btn solid" id="fok">Xem kết quả</button></div></div>`);
+    const drawG = () => {
+      $("#gch", sh).innerHTML = gl.length ? gl.map(x => `<button class="chip ${sel.genres.has(x.name) ? "on" : ""}" data-g="${esc(x.name)}">${esc(x.name)} (${x.n})</button>`).join("") : `<p class="muted">Không tải được danh sách thể loại</p>`;
+      $$("#gch [data-g]", sh).forEach(b => b.onclick = () => { const g = b.dataset.g; sel.genres.has(g) ? sel.genres.delete(g) : sel.genres.add(g); b.classList.toggle("on"); });
+    };
+    const drawS = () => {
+      if (!$("#sch", sh)) return; const q = $("#sq", sh) ? norm($("#sq", sh).value) : "";
+      $("#sch", sh).innerHTML = seriesList.filter(([n]) => !q || norm(n).includes(q)).map(([n, c]) => `<button class="chip ${sel.series === n ? "on" : ""}" data-s="${esc(n)}">${esc(n)} (${c})</button>`).join("") || `<p class="muted">Không có series phù hợp</p>`;
+      $$("#sch [data-s]", sh).forEach(b => b.onclick = () => { sel.series = sel.series === b.dataset.s ? "" : b.dataset.s; drawS(); });
+    };
+    drawG(); drawS(); if ($("#sq", sh)) $("#sq", sh).oninput = drawS;
+    $("#fclr", sh).onclick = () => { sel.genres.clear(); sel.series = ""; drawG(); drawS(); };
+    $("#fok", sh).onclick = () => { exF.genres = sel.genres; exF.series = sel.series; closeSheet(); draw(); };
+  };
 }
 
-// ---------- Thể loại ----------
-async function renderGenres() {
-  view.innerHTML = `<p class="load">Đang tải...</p>`;
-  try {
-    const g = (await api("/api/genres")).genres;
-    view.innerHTML = `<div class="chips">${g.map(x => `<button class="chip" data-g="${esc(x.name)}">${esc(x.name)} (${x.n})</button>`).join("")}</div>`;
-    $$(".chip", view).forEach(b => b.onclick = () => openList(b.dataset.g, "/api/stories?genre=" + encodeURIComponent(b.dataset.g)));
-  } catch (e) { view.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
-}
 async function openList(title, path) {
   const el = push(h(`<div><div class="bar"><button class="bk" aria-label="Quay lại">${ICON.back}</button><b>${esc(title)}</b></div><div class="body"><div class="grid">${skel()}</div></div></div>`));
   $(".bk", el).onclick = pop;
@@ -630,28 +660,20 @@ let statSort = "t";
 function renderStats() {
   const list = Object.entries(stats).map(([id, s]) => ({ id: +id, ...s, t: s.r + s.l }));
   const R = list.reduce((a, s) => a + s.r, 0), L = list.reduce((a, s) => a + s.l, 0), T = R + L;
-  const td = days[dayKey()] || [0, 0];
-  const last = []; for (let i = 6; i >= 0; i--) { const d = new Date(Date.now() - i * 864e5); const k = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); last.push([d.getDate() + "/" + (d.getMonth() + 1), days[k] || [0, 0]]); }
-  const mx = Math.max(60, ...last.map(([, v]) => v[0] + v[1]));
   const sorted = list.filter(s => s[statSort] > 0).sort((a, b) => b[statSort] - a[statSort]);
   const top = Math.max(1, ...sorted.map(s => s.t));
   const ss = ls.get("statsSync", 0), hhmm = ss ? new Date(ss).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : "";
   const note = !acct ? "Thống kê chỉ lưu trên máy này. Liên kết tài khoản (Cài đặt) hoặc dùng Sao lưu để không bị mất khi cài lại app."
     : statsErr === "nosrv" ? "Máy chủ chưa hỗ trợ đồng bộ thống kê, hãy dùng Sao lưu trong Cài đặt."
     : ss ? "Đã đồng bộ với tài khoản · " + hhmm : "Chưa đồng bộ, bấm nút đồng bộ ở Cài đặt.";
-  const gm = +cfg.goal || 0, tdS = td[0] + td[1], gp = gm ? Math.min(100, tdS / (gm * 60) * 100) : 0, stk = streak();
-  const goalCard = `<div class="stc goalc"><div class="sth">Mục tiêu mỗi ngày</div>${gm ? `<div class="gbar"><i style="width:${gp}%"></i></div>` : ""}<div class="tl"><small>${gm ? fmt(tdS) + " / " + gm + " phút" : "Chưa đặt mục tiêu"}</small><small>🔥 ${stk} ngày liên tiếp</small></div><div class="chips">${[0, 10, 20, 30, 60].map(m => `<button class="chip ${gm === m ? "on" : ""}" data-goal="${m}">${m ? m + " phút" : "Tắt"}</button>`).join("")}</div></div>`;
-  view.innerHTML = `<p class="muted stnote">${esc(note)}</p>${goalCard}<div class="stc"><div class="sth">Tổng</div><div class="stbig">${fmt(T)} <small>Tổng thời gian</small></div>
+  view.innerHTML = `<p class="muted stnote">${esc(note)}</p><div class="stc"><div class="sth">Tổng</div><div class="stbig">${fmt(T)} <small>Tổng thời gian</small></div>
     <div class="stbar"><i class="r" style="flex:${R || 0.0001}"></i><i class="l" style="flex:${L || 0.0001}"></i></div>
     <div class="stleg"><span><i class="dot r"></i>Đọc<br><b>${fmt(R)}</b></span><span style="text-align:right"><i class="dot l"></i>Nghe<br><b>${fmt(L)}</b></span></div></div>
-    <div class="stc"><div class="sth">Hôm nay: đọc ${fmt(td[0])} · nghe ${fmt(td[1])}</div>
-    <div class="days">${last.map(([n, v]) => `<div class="dy"><div class="col"><i class="l" style="height:${v[1] / mx * 100}%"></i><i class="r" style="height:${v[0] / mx * 100}%"></i></div><small>${n}</small></div>`).join("")}</div></div>
     <div class="strk"><b>Xếp hạng</b><div class="seg">${[["t", "Tổng"], ["r", "Đọc"], ["l", "Nghe"]].map(([k, n]) => `<button data-s="${k}" class="${statSort === k ? "on" : ""}">${n}</button>`).join("")}</div></div>
     ${sorted.length ? sorted.map(s => `<div class="stc sti" data-id="${s.id}"><img src="${esc(img(s.cover, 400))}" alt=""><div class="t"><div class="tl"><b>${esc(s.title)}</b><span>${fmt(s[statSort])}</span></div>
       <div class="tl"><small>Đọc ${fmt(s.r)}</small><small>Nghe ${fmt(s.l)}</small></div>
       <div class="stbar sm" style="width:${s.t / top * 100}%"><i class="r" style="flex:${s.r || 0.0001}"></i><i class="l" style="flex:${s.l || 0.0001}"></i></div></div></div>`).join("") : `<p class="empty">Chưa có dữ liệu.<br>Thời gian đọc và nghe sẽ được ghi lại khi bạn dùng app.</p>`}`;
   $$("[data-s]", view).forEach(b => b.onclick = () => { statSort = b.dataset.s; renderStats(); });
-  $$("[data-goal]", view).forEach(b => b.onclick = () => { cfg.goal = +b.dataset.goal; saveCfg(); renderStats(); });
 }
 
 // ---------- Cài đặt ----------
@@ -671,41 +693,21 @@ function renderSettings() {
     <div class="r"><label>Độ phủ nền: <span id="bgdv">${Math.round(bgAlpha() * 100)}%</span></label><input id="bgd" type="range" min="50" max="96" value="${Math.round(bgAlpha() * 100)}"></div>
     <div class="chips"><button class="chip ${cfg.bg.dim == null ? "on" : ""}" id="bgauto">Độ phủ tự động</button></div>` : ""}
     <p class="muted">Ảnh được tự cắt vừa màn hình, làm mờ và phủ màu giao diện để chữ và bìa truyện luôn rõ, dù chọn ảnh nào.</p>
-    <h4>Giao diện khi đọc truyện</h4><div class="themes">${swatches(cfg.rtheme === "app" ? "" : cfg.rtheme, "data-rth")}</div>
-    <div class="chips"><button class="chip ${cfg.rtheme === "app" ? "on" : ""}" id="rtApp">Theo giao diện ứng dụng</button></div>
-    <h4>Chữ khi đọc</h4>
-    <div class="r"><label>Chế độ đọc</label><select id="md"><option value="scroll">Cuộn dọc</option><option value="page">Vuốt ngang (lật trang)</option></select></div>
-    <div class="r"><label>Cỡ chữ: <span id="sv">${cfg.size}</span>px</label><input id="sz" type="range" min="14" max="30" value="${cfg.size}"></div>
-    <div class="r"><label>Giãn dòng: <span id="lv">${cfg.lh}</span></label><input id="lh" type="range" min="1.4" max="2.4" step="0.1" value="${cfg.lh}"></div>
-    <div class="r"><label>Font</label><select id="fn">${fontOpts()}</select></div>
-    <h4>Đọc</h4>
-    <div class="r"><label>Giữ màn hình sáng khi đọc</label><input type="checkbox" id="cawk" ${cfg.awake !== false ? "checked" : ""}></div>
-    <div class="r"><label>Chạm mép để lật trang (vuốt ngang)</label><input type="checkbox" id="cedg" ${cfg.edge !== false ? "checked" : ""}></div>
-    <div class="r"><label>Tự tải trước chương sắp đọc (khi có Wi-Fi)</label><select id="cpf"><option value="0">Tắt</option><option value="2">2 chương</option><option value="5">5 chương</option><option value="10">10 chương</option></select></div>
-    <h4>Sách nói</h4>
-    <div class="r"><button class="btn" id="ttsrules">Phát âm & bỏ qua đoạn</button><button class="btn" id="musbtn">Nhạc nền</button></div>
-    <div class="r"><label>Tốc độ mặc định: <span id="rv">${fmtRate(cfg.rate)}</span></label><input id="rt" type="range" min="0.1" max="2" step="0.01" value="${cfg.rate}"></div>
-    ${native ? `<div class="r"><button class="btn" id="ttsset">Cài đặt giọng nói của máy</button></div>` : ""}
-    <h4>Máy chủ</h4>
-    <div class="r"><input id="bs" style="flex:1" value="${esc(cfg.base)}"></div>
-    <div class="r"><button class="btn" id="bsok">Lưu địa chỉ</button><button class="btn" id="bsrs">Mặc định</button></div>
     <h4>Dữ liệu</h4>
     <div class="r"><button class="btn solid" id="bkexp">Sao lưu dữ liệu</button><button class="btn" id="bkimp">Khôi phục từ file</button></div>
     <input type="file" id="bkf" accept=".json,application/json,text/plain" hidden>
     <p class="muted">Sao lưu gồm thống kê thời gian, lịch sử, truyện theo dõi và cài đặt. Lưu vào Drive/Zalo/Keep để khôi phục khi cài lại app hoặc đổi máy.</p>
     <div class="r"><button class="btn danger" id="clr">Xóa toàn bộ truyện đã tải</button></div>
     <div class="r"><button class="btn danger" id="clrst">Xóa thống kê</button></div>
+    <h4>Máy chủ</h4>
+    <div class="r"><input id="bs" style="flex:1" value="${esc(cfg.base)}"></div>
+    <div class="r"><button class="btn" id="bsok">Lưu địa chỉ</button><button class="btn" id="bsrs">Mặc định</button></div>
     <h4>Ứng dụng</h4>
     <div class="r"><label>Phiên bản: <b>${esc(APP_VER || "web")}</b></label>${native ? `<button class="btn" id="chkupd">Kiểm tra cập nhật</button>` : ""}</div>
     <p class="empty">B-novel Reader</p></div>`;
-  $("#fn").value = cfg.font; $("#md").value = cfg.mode;
-  $("#cawk").onchange = e => { cfg.awake = e.target.checked; saveCfg(); };
-  $("#cedg").onchange = e => { cfg.edge = e.target.checked; saveCfg(); };
-  $("#cpf").value = String(cfg.prefetch || 0); $("#cpf").onchange = e => { cfg.prefetch = +e.target.value; saveCfg(); };
-  $("#ttsrules").onclick = () => openTtsRules(); $("#musbtn").onclick = () => openMusic();
   $("#bkexp").onclick = () => {
     const c = Object.assign({}, cfg); delete c.bg;
-    const txt = JSON.stringify({ app: "bnovel-reader", v: 1, t: Date.now(), cfg: c, fav, hist, stats, days, bm, tags });
+    const txt = JSON.stringify({ app: "bnovel-reader", v: 1, t: Date.now(), cfg: c, fav, hist, stats, days, bm });
     if (native && window.AndroidApp && AndroidApp.shareText) AndroidApp.shareText("Sao lưu B-novel Reader", txt);
     else { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "application/json" })); a.download = "bnovel-backup.json"; a.click(); }
     try { navigator.clipboard && navigator.clipboard.writeText(txt); } catch {}
@@ -720,7 +722,7 @@ function renderSettings() {
       const ids = new Set(fav.map(x => x.id)); for (const x of o.fav || []) if (!ids.has(x.id)) fav.push(x);
       ls.set("hist", hist); ls.set("fav", fav);
       for (const [sid, arr] of Object.entries(o.bm || {})) { const cur = bm[sid] || (bm[sid] = []); for (const b of arr) if (!cur.some(c => c.pos === b.pos && c.p === b.p)) cur.push(b); }
-      saveBm(); Object.assign(tags, o.tags || {}, tags); ls.set("tags", tags);
+      saveBm();
       if (o.cfg) { const keep = { base: cfg.base, bg: cfg.bg }; Object.assign(cfg, o.cfg, keep); saveCfg(); applyTheme(); }
       toast("Đã khôi phục dữ liệu"); renderSettings();
       if (acct) syncStats();
@@ -742,14 +744,6 @@ function renderSettings() {
     $("#bgauto").onclick = () => { cfg.bg.dim = null; saveCfg(); applyBg(); renderSettings(); };
   }
   $$("[data-th]", view).forEach(b => b.onclick = () => { cfg.theme = b.dataset.th; saveCfg(); applyTheme(); renderSettings(); });
-  $$("[data-rth]", view).forEach(b => b.onclick = () => { cfg.rtheme = b.dataset.rth; saveCfg(); renderSettings(); });
-  $("#rtApp").onclick = () => { cfg.rtheme = "app"; saveCfg(); renderSettings(); };
-  $("#sz").oninput = e => { cfg.size = +e.target.value; $("#sv").textContent = cfg.size; saveCfg(); applyTheme(); };
-  $("#lh").oninput = e => { cfg.lh = +e.target.value; $("#lv").textContent = cfg.lh; saveCfg(); applyTheme(); };
-  $("#fn").onchange = e => { cfg.font = e.target.value; saveCfg(); applyTheme(); };
-  $("#md").onchange = e => { cfg.mode = e.target.value; saveCfg(); };
-  $("#rt").oninput = e => { cfg.rate = clampRate(e.target.value); $("#rv").textContent = fmtRate(cfg.rate); saveCfg(); };
-  if ($("#ttsset")) $("#ttsset").onclick = () => AndroidTTS.openSettings();
   if ($("#syncnow")) $("#syncnow").onclick = () => sync(true);
   if ($("#chkupd")) $("#chkupd").onclick = () => checkUpdate(true);
   if ($("#unlink")) $("#unlink").onclick = () => { if (!confirm("Hủy liên kết tài khoản? Dữ liệu trên máy vẫn được giữ.")) return; acct = null; ls.set("acct", null); renderSettings(); };
@@ -839,6 +833,7 @@ async function openStory(id) {
 async function startDownload(s, toc, redraw) {
   const id = s.id;
   if (jobs[id]) { if (jobs[id].native) nativeDl.cancel(+id); else jobs[id].cancel = true; return; }
+  if (!acct) { if (confirm("Tải truyện xuống cần đăng nhập (liên kết tài khoản B-novel).\nĐến Cài đặt để liên kết ngay?")) { while (stack.length) pop(); go("set"); } return; }
   if (nativeDl) return startNativeDl(s, toc, redraw);
   const d = dl[id] || (dl[id] = { story: { id, title: s.title, cover: s.cover, description: s.description, authors: s.authors, illustrators: s.illustrators, genres: s.genres, status: s.status, series: s.series }, chapters: [], have: [], imgs: [] });
   d.chapters = toc.map(c => ({ position: c.position, title: c.title })); d.imgs = d.imgs || [];
@@ -936,6 +931,7 @@ function openReader(story, toc, startIdx, startP) {
         <div class="tr tr3"><small>Tốc độ</small><button id="trm" aria-label="Giảm 0,01">−</button><input id="tr" type="range" min="0.1" max="2" step="0.01"><button id="trp" aria-label="Tăng 0,01">+</button><b id="trv"></b></div>
         <div class="tr tr2"><select id="tv"></select></div>
         <div class="tr tr4"><button id="tmus" class="btn">♪ Nhạc nền</button><button id="trule" class="btn">Phát âm / bỏ qua</button></div>
+        ${native ? `<div class="tr tr4"><button id="ttsdev" class="btn">Giọng nói của máy</button></div>` : ""}
       </div>
     </div>
     <div class="tinfo"><small id="tcnt"></small><small id="tst"></small><small id="tpg"></small></div>
@@ -1181,16 +1177,17 @@ function openReader(story, toc, startIdx, startP) {
   // ---- vẽ chương ----
   function paint(ch, p, atEnd) {
     curCh = ch; searchClose();
-    const paras = renderContent(ch.content), title = esc(ch.title || curTitle());
+    const paras = renderContent(ch.content), onlyImg = imgOnly(ch.content);
+    const title = onlyImg ? "" : `<h2 class="rch">${esc(ch.title || curTitle())}</h2>`;     // chương chỉ có ảnh (minh họa): bỏ tiêu đề, ảnh nằm giữa trang
     if (isPage()) {
       scroll.className = "rscroll hm";
-      scroll.innerHTML = `<div class="hclip fi"><div class="hcols"><h2 class="rch">${title}</h2>${paras}</div></div>`;
+      scroll.innerHTML = `<div class="hclip fi"><div class="hcols">${title}${paras}</div></div>`;
       hclip = $(".hclip", scroll); hcols = $(".hcols", scroll); text = hcols;
-      layoutH(p, atEnd);
-      $$("img", hcols).forEach(i => i.addEventListener("load", () => relayout(true), { once: true }));
+      layoutH(p, atEnd);          // mỗi ảnh là một trang cao cố định nên không phụ thuộc lúc ảnh tải xong, không bị nhảy trang
     } else {
       scroll.className = "rscroll"; hclip = hcols = null; pgnum.hidden = true;
-      scroll.innerHTML = `<div class="rbody"><h2 class="rch">${title}</h2><div class="rtext">${paras}</div><div class="rend">${idx < toc.length - 1 ? `<button class="btn solid" id="en">Chương sau →</button>` : `<p class="empty">Hết truyện</p>`}</div></div>`;
+      scroll.style.setProperty("--sh", Math.max(300, scroll.clientHeight - 40) + "px");
+      scroll.innerHTML = `<div class="rbody">${title}<div class="rtext">${paras}</div><div class="rend">${idx < toc.length - 1 ? `<button class="btn solid" id="en">Chương sau →</button>` : `<p class="empty">Hết truyện</p>`}</div></div>`;
       text = $(".rtext", scroll); scroll.scrollTop = 0;
       if (p) { const t = $(`[data-p="${p}"]`, text); if (t) t.scrollIntoView({ block: "start" }); }
       if ($("#en", el)) $("#en", el).onclick = () => goTo(idx + 1);
@@ -1276,7 +1273,9 @@ function openReader(story, toc, startIdx, startP) {
       <div class="stp"><label>Font</label><select id="fn">${fontOpts()}</select></div>
       <div class="stp"><label>Lọc ánh sáng xanh</label><input id="wm" type="range" min="0" max="100" step="5" value="${cfg.warm || 0}"></div>
       <div class="chips"><button class="chip ${cfg.warmAuto ? "on" : ""}" id="wma">Tự bật 19h–6h</button><button class="chip ${cfg.awake !== false ? "on" : ""}" id="awk">Giữ màn hình sáng</button><button class="chip ${cfg.edge !== false ? "on" : ""}" id="edg">Chạm mép lật trang</button></div>
+      <div class="stp"><label>Tải trước chương (Wi-Fi)</label><select id="rpf"><option value="0">Tắt</option><option value="2">2 chương</option><option value="5">5 chương</option><option value="10">10 chương</option></select></div>
       <div class="stp"><label>Tự cuộn</label><input id="aus" type="range" min="10" max="200" step="5" value="${cfg.auto || 40}"><button class="chip" id="aub">${autoOn ? "Dừng" : "Bắt đầu"}</button></div>`);
+    $("#rpf", s).value = String(cfg.prefetch || 0); $("#rpf", s).onchange = e => { cfg.prefetch = +e.target.value; saveCfg(); };
     $("#wm", s).oninput = e => { cfg.warm = +e.target.value; applyRead(); };
     $("#wm", s).onchange = () => saveCfg();
     $("#wma", s).onclick = e => { cfg.warmAuto = !cfg.warmAuto; if (cfg.warmAuto && !cfg.warm) { cfg.warm = 40; $("#wm", s).value = 40; } saveCfg(); applyRead(); e.target.classList.toggle("on", cfg.warmAuto); };
@@ -1526,6 +1525,7 @@ function openReader(story, toc, startIdx, startP) {
     };
     window.__ttsRules = () => T.rebuild();
     $("#tmus", el).onclick = () => openMusic(el.dataset.theme);
+    if ($("#ttsdev", el)) $("#ttsdev", el).onclick = () => { try { AndroidTTS.openSettings(); } catch {} };
     $("#trule", el).onclick = () => openTtsRules(el.dataset.theme);
     if (native) {
       fillVoices(nativeVoices());
@@ -1556,7 +1556,7 @@ function openReader(story, toc, startIdx, startP) {
     addTime(story, 0, dt / 1000);
   }, 1000);
 
-  el._api = { title: () => story.title, ch: curTitle, playing: () => tts.playing, toggle: () => tts.toggle() };
+  el._api = { title: () => story.title, ch: curTitle, playing: () => tts.playing, toggle: () => tts.toggle(), relayout: () => { setRbh(); relayout(true); } };
   el._leave = () => {
     if (tts.active()) { const i = stack.indexOf(el); if (i >= 0) stack.splice(i, 1); el.style.display = "none"; bg = el; updateMini(); applyBars(); }
     else pop();

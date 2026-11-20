@@ -1,4 +1,13 @@
 ## Có gì mới
+- **Gộp Thể loại vào Khám phá:** bỏ tab Thể loại, thay bằng nút Lọc cạnh ô tìm kiếm. Bấm vào để chọn nhiều thể loại cùng lúc và chọn series (có ô tìm series). Bộ lọc đang dùng hiện thành các thẻ bên dưới, bấm ✕ để bỏ từng cái, nút Lọc hiện số bộ lọc đang bật
+- Trang Thống kê gọn hơn: bỏ khối Mục tiêu mỗi ngày (chuỗi ngày liên tiếp) và biểu đồ 7 ngày
+- **Thẻ truyện gọn đều:** bỏ số chương và % ở góc bìa, tên truyện nằm dưới bìa, tối đa 2 dòng, dài quá thì cắt bằng "…". Mọi thẻ cùng kích thước nên hàng nào cũng thẳng đều
+- **Mỗi ảnh minh họa là một trang riêng**, ảnh nằm chính giữa màn hình, chương chỉ có ảnh không còn hiện tiêu đề; ở chế độ cuộn dọc mỗi ảnh chiếm một màn hình
+- **Tủ sách gọn kiểu vBook:** thanh trên có avatar bên trái, hai tab Kệ sách và Lịch sử, kính lúp tìm truyện và menu ⋮ (sắp xếp, đồng bộ). Bỏ các nút lọc và ô tìm kiếm chiếm chỗ
+- **Kệ sách chỉ gồm truyện đang theo dõi; Lịch sử gồm truyện đã đọc nhưng chưa theo dõi** (có nút ♡ để thêm vào kệ nhanh)
+- **Bấm avatar để mở mục Tải xuống:** danh sách truyện đã tải, xóa từng truyện. Tải truyện xuống cần đăng nhập (liên kết tài khoản)
+- **Cài đặt ứng dụng gọn hơn:** các cài đặt đọc (giao diện đọc, chữ, chế độ đọc, giữ màn hình sáng, tải trước chương) chỉ còn trong Cài đặt đọc khi đang đọc truyện; phát âm, nhạc nền và giọng nói của máy nằm trong bảng nghe
+- Bỏ nhãn Đọc sau và Đã xong
 - **Thẻ truyện kiểu vBook:** tên truyện nằm ngay trong ảnh bìa, góc trên bên trái hiện số chương và % đã đọc (ví dụ 247C - 86,2%). Mọi thẻ cùng kích thước nên kệ sách gọn mắt, không còn truyện bị nhô lên vì tên dài hay tên chương dài
 - **Giữ lâu một đoạn khi đọc:** hiện menu Nghe từ đây (đọc từ đúng câu đó), Đánh dấu / ghi chú, Sao chép đoạn
 - **Đánh dấu và ghi chú:** đoạn đã đánh dấu được tô nền nhẹ, xem lại ở Mục lục, tab Đánh dấu, chạm để nhảy tới đúng đoạn
@@ -34,6 +43,8 @@
 - **Tự báo bản cập nhật** mỗi khi bạn mở app
 
 ## Sửa lỗi
+- Sửa lỗi lướt qua chương Minh họa bị nhảy về đầu: số trang không còn phụ thuộc lúc ảnh tải xong
+- Sửa lỗi khi đang nghe, thoát ra rồi bấm thanh đang nghe để vào lại thì thanh trạng thái và thanh điều hướng của máy bị sai màu (màu giao diện ứng dụng thay vì màu giao diện đọc), đồng thời dàn lại trang cho đúng
 - Sửa lỗi giật, lag khi mở bảng Cài đặt đọc và khi đổi giao diện, cỡ chữ: bỏ hiệu ứng làm mờ nền nặng đè lên trang chữ, thanh menu và bảng nghe dùng nền đặc nên mượt hơn
 - Sửa lỗi bấm nghe là đọc lại từ đầu chương: giờ đang đọc ở trang nào (hoặc đoạn nào khi cuộn dọc) thì nghe từ đúng câu đầu tiên đang hiện trên màn hình
 - Sửa lỗi chữ khi đọc rất khó nhìn khi giao diện ứng dụng và giao diện đọc khác nhau (ví dụ chữ tím trên nền đọc tối). Giờ nền đọc tối luôn dùng chữ trắng, nền đọc sáng luôn dùng chữ đen

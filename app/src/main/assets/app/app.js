@@ -1537,7 +1537,10 @@ function openReader(story, toc, startIdx, startP) {
         if (near) { clearTimeout(bubT); bub.classList.add("dock"); } else dockSoon();
       };
       bub.addEventListener("touchend", end); bub.addEventListener("touchcancel", end);
-      bub.addEventListener("click", ev => { if (Date.now() - moved < 350) { ev.stopPropagation(); ev.preventDefault(); } }, true);
+      bub.addEventListener("click", ev => {
+        if (Date.now() - moved < 350) { ev.stopPropagation(); ev.preventDefault(); return; }
+        if (bub.classList.contains("dock")) { ev.stopPropagation(); ev.preventDefault(); bub.classList.remove("dock"); dockSoon(); }   // chạm vào bong bóng đang thu lại là bung ra ngay
+      }, true);
     })();
     const showPanel = collapsed => {
       if (!native && !web) { toast("Máy không hỗ trợ đọc truyện"); return false; }

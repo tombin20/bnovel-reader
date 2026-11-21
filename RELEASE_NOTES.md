@@ -1,4 +1,6 @@
 ## Có gì mới
+- Chạm vào bong bóng nghe đang thu lại ở mép là bung ra đủ nút ngay, không cần kéo nữa (kéo cũng được)
+- Ảnh nền (banner) ở trang chi tiết truyện bớt nhòe: giảm độ mờ blur còn khoảng 20% so với trước nên nhìn rõ ảnh hơn
 - **Bong bóng nghe thu lại thông minh:** kéo sát mép màn hình là tự thu lại ngay (không cần chờ), khi thu lại mờ đi và chỉ lộ khoảng 1/4 hình tròn ở mép để vẫn đọc được chữ phía sau; chạm vào phần lộ ra để mở lại
 - Trang chi tiết truyện dùng ảnh nền (banner) của truyện từ máy chủ, không có thì dùng bìa mờ
 - **Trình phát nghe toàn màn hình:** bấm nút tai nghe để mở, có ảnh bìa lớn, tên truyện, tác giả, thanh tua theo câu, tên chương, nút câu trước / chương trước / phát-dừng / chương sau / câu sau, thanh dưới gồm Mục lục, Hẹn giờ, Tốc độ, Nhạc nền, Cài đặt (giọng đọc, phát âm, giọng nói của máy)

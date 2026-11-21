@@ -623,3 +623,10 @@ body.hasmini .sp .fabs{bottom:92px}
 .sp .fabs svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .sp .fabs .big svg{width:30px;height:30px}
 .sp .fabs .fp{font-size:12px;font-weight:700}
+
+/* bong bóng thu lại: mờ đi, chỉ lộ 1/4 hình tròn ở mép */
+.tbub{transition:transform .25s var(--ease),opacity .25s}
+.tbub.dock{opacity:.4}
+.tbub.l.dock,.tbub:not(.r).dock{transform:translateX(-75%)}.tbub.r.dock{transform:translateX(75%)}
+.tbub.dock::before{content:"";position:absolute;inset:-14px}
+.tbub.l.dock,.tbub:not(.r).dock{left:0}.tbub.r.dock{right:0}

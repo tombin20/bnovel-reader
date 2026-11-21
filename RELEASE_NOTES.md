@@ -1,4 +1,6 @@
 ## Có gì mới
+- **Bong bóng nghe thu lại thông minh:** kéo sát mép màn hình là tự thu lại ngay (không cần chờ), khi thu lại mờ đi và chỉ lộ khoảng 1/4 hình tròn ở mép để vẫn đọc được chữ phía sau; chạm vào phần lộ ra để mở lại
+- Trang chi tiết truyện dùng ảnh nền (banner) của truyện từ máy chủ, không có thì dùng bìa mờ
 - **Trình phát nghe toàn màn hình:** bấm nút tai nghe để mở, có ảnh bìa lớn, tên truyện, tác giả, thanh tua theo câu, tên chương, nút câu trước / chương trước / phát-dừng / chương sau / câu sau, thanh dưới gồm Mục lục, Hẹn giờ, Tốc độ, Nhạc nền, Cài đặt (giọng đọc, phát âm, giọng nói của máy)
 - **Bong bóng thu nhỏ:** bấm mũi tên ở góc trái để thu nhỏ trình phát về bong bóng ảnh bìa kèm nút phát/dừng, câu sau, tắt. Kéo bong bóng đi đâu cũng được, thả ra tự dính cạnh màn hình và thu gọn lại, chạm ảnh bìa để mở lại. Nút Back của máy cũng thu nhỏ trình phát trước. Giữ lâu một đoạn rồi chọn Nghe từ đây sẽ nghe ngay ở dạng bong bóng để vừa nghe vừa đọc
 - **Trang chi tiết truyện làm mới:** bìa lớn ở giữa, tên truyện to rõ, nút tác giả, thẻ thể loại, các thẻ Thông tin, Giới thiệu, Mục lục có nền đặc nên chữ rõ nét. Ảnh nền mờ phía sau lấy từ ảnh nền của truyện (không có thì dùng bìa). Mục lục có ô tìm chương và nút đảo thứ tự; ba nút nổi ở góc phải: theo dõi, tải xuống, đọc. Cuộn xuống thì thanh trên hiện tên truyện

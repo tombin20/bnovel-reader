@@ -808,7 +808,7 @@ async function openStory(id) {
   if (nativeDl) { const sn = dlMerge(id); if (sn && (sn.state === "run" || sn.state === "queued")) jobs[id] = { native: true, done: sn.done, total: sn.total }; }
   $(".sp-t", el).textContent = s.title;
   // ảnh nền phía sau: ưu tiên ảnh nền của truyện (như trên web), không có thì dùng bìa
-  const bgU = s.background || s.backdrop || s.banner || s.bg_image || s.background_url || s.cover;
+  const bgU = s.banner || s.background || s.backdrop || s.bg_image || s.background_url || s.cover;
   const authors = s.authors || [], illus = s.illustrators || [], alts = s.alts || s.alt_titles || s.altTitles || s.other_names;
   const altTxt = Array.isArray(alts) ? alts.join(", ") : (alts || "");
   const rows = [illus.length ? `Họa sĩ: ${esc(illus.join(", "))}` : "", altTxt ? `Tên khác: ${esc(altTxt)}` : "", s.series ? `Series: <a id="ser">${esc(s.series)}</a>` : "", s.status ? `Tình trạng: ${esc(s.status)}` : "", `Số chương: ${toc.length}`].filter(Boolean);
@@ -1531,8 +1531,10 @@ function openReader(story, toc, startIdx, startP) {
       const end = () => {
         const x = d; d = null; if (!x || !x.on) return; moved = Date.now();
         const pr = el.getBoundingClientRect(), r = bub.getBoundingClientRect(), left = r.left + r.width / 2 < pr.left + pr.width / 2, top = bub.style.top;
+        const near = left ? r.left - pr.left < 48 : pr.right - r.right < 48;      // kéo sát mép màn hình thì thu lại ngay
         bub.style.transition = ""; bub.style.left = ""; bub.style.right = ""; bub.classList.toggle("l", left); bub.classList.toggle("r", !left); bub.style.top = top;
-        cfg.bubY = parseInt(top); saveCfg(); dockSoon();
+        cfg.bubY = parseInt(top); saveCfg();
+        if (near) { clearTimeout(bubT); bub.classList.add("dock"); } else dockSoon();
       };
       bub.addEventListener("touchend", end); bub.addEventListener("touchcancel", end);
       bub.addEventListener("click", ev => { if (Date.now() - moved < 350) { ev.stopPropagation(); ev.preventDefault(); } }, true);

@@ -25,6 +25,15 @@ const ICON = {
   power: SV('<path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1011.4 0"/>'),
   voice: SV('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>'),
   gear: SV('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>'),
+  chevDown: SV('<path d="M6 9l6 6 6-6"/>'),
+  close: SV('<path d="M6 6l12 12M18 6L6 18"/>'),
+  music: SV('<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>'),
+  sort: SV('<path d="M8 5v14M4.5 8.5L8 5l3.5 3.5M16 19V5M12.5 15.5L16 19l3.5-3.5"/>'),
+  download: SV('<circle cx="12" cy="12" r="9"/><path d="M12 7v7M8.8 11.5L12 14.7l3.2-3.2"/>'),
+  check: SV('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+  stop: SV('<rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/>'),
+  bookmark: SV('<path d="M7 4h10v16l-5-3.6L7 20z"/>'),
+  bookmarkOn: SV('<path fill="currentColor" d="M7 4h10v16l-5-3.6L7 20z"/>'),
   filter: SV('<path d="M4 5.5h16l-6.2 7.3v5.4l-3.6 1.8v-7.2z"/>'),
   more: SV('<circle cx="12" cy="5" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="19" r="1.7" fill="currentColor"/>'),
   user: SV('<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-5.5 8-5.5s6.5 1.5 8 5.5"/>'),
@@ -448,7 +457,7 @@ window.__back = () => {
   try {
     if (sheetEl) { closeSheet(); return true; }
     const t = stack[stack.length - 1];
-    if (t) { if (t._leave) t._leave(); else pop(); return true; }
+    if (t) { if (t._api && t._api.collapse && t._api.collapse()) return true; if (t._leave) t._leave(); else pop(); return true; }
     if (tab !== "lib") { go("lib"); return true; }
     return false;
   } catch (e) { // lỗi JS không được làm thoát app: gỡ màn hình trên cùng rồi coi như đã xử lý
@@ -789,45 +798,63 @@ window.__dl = id => {
   if (dlRedraw[id]) dlRedraw[id]();
 };
 async function openStory(id) {
-  const el = push(h(`<div><div class="bar"><button class="bk" aria-label="Quay lại">${ICON.back}</button><b>Truyện</b></div><div class="body"><p class="load">Đang tải...</p></div></div>`));
+  const el = push(h(`<div class="sp"><div class="sp-top"><button class="bk" aria-label="Quay lại">${ICON.back}</button><b class="sp-t"></b><button id="spm" aria-label="Thêm">${ICON.more}</button></div><div class="body"><p class="load" style="padding-top:90px">Đang tải...</p></div></div>`));
   $(".bk", el).onclick = pop;
   const body = $(".body", el);
   let s, toc;
   try { [s, toc] = await Promise.all([api("/api/story?id=" + id).then(r => r.story), getToc(id)]); }
-  catch (e) { if (dl[id]) { s = dl[id].story; toc = dl[id].chapters; } else { body.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; } }
-  let desc = true, asc = true;
+  catch (e) { if (dl[id]) { s = dl[id].story; toc = dl[id].chapters; } else { body.innerHTML = `<p class="err" style="padding-top:90px">${esc(e.message)}</p>`; return; } }
+  let descCl = true, asc = true, q = "";
   if (nativeDl) { const sn = dlMerge(id); if (sn && (sn.state === "run" || sn.state === "queued")) jobs[id] = { native: true, done: sn.done, total: sn.total }; }
-  const draw = () => {
-    const d = dl[id], have = new Set(d ? d.have : []), hs = hist[id], isFav = fav.some(f => f.id === id), job = jobs[id];
-    const list = asc ? toc : [...toc].reverse();
-    body.innerHTML = `<div class="hero" style="--cv:url('${esc(img(s.cover, 400))}')"><div class="dhead"><img src="${esc(img(s.cover, 400))}" alt=""><div><h2>${esc(s.title)}</h2>
-      ${(s.authors || []).length ? `<p>Tác giả: ${esc(s.authors.join(", "))}</p>` : ""}
-      ${(s.illustrators || []).length ? `<p>Họa sĩ: ${esc(s.illustrators.join(", "))}</p>` : ""}
-      ${s.series ? `<p>Series: ${esc(s.series)}</p>` : ""}<p>${esc(s.status || "")} · ${toc.length} chương</p></div></div></div>
-      <div class="acts"><button class="btn solid" id="read">${hs ? "▶ Đọc tiếp" : "▶ Đọc"}</button>
-      <button class="btn" id="fv">${isFav ? "♥ Đang theo dõi" : "♡ Theo dõi"}</button>
-      <button class="btn" id="dlb">${job ? "⏹ Đang tải " + (job.native ? job.done + "/" + job.total : (d ? d.have.length : 0) + "/" + toc.length) : d && d.have.length >= toc.length ? "✓ Đã tải" : "⬇ Tải xuống"}</button>
-      ${s.series ? `<button class="btn" id="ser">Cùng series</button>` : ""}</div>
-      <div class="chips" style="margin-bottom:10px">${(s.genres || []).map(g => `<button class="chip" data-g="${esc(g)}">${esc(g)}</button>`).join("")}</div>
-      <div class="desc ${desc ? "cl" : ""}" id="ds">${esc(s.description || "")}</div>
-      <button class="btn" id="mr" style="margin:8px 0">${desc ? "Xem thêm" : "Thu gọn"}</button>
-      <div class="sec" style="display:flex;justify-content:space-between"><span>Danh sách chương (${toc.length})</span><button id="so">${asc ? "↓ Cũ nhất" : "↑ Mới nhất"}</button></div>
-      ${list.map(c => `<div class="ch ${hs && hs.pos === c.position ? "cur" : ""}" data-pos="${c.position}"><span>${esc(c.title)}</span>${have.has(c.position) ? "<i>✓</i>" : ""}</div>`).join("")}`;
-    $("#read", body).onclick = () => { const i = hs ? Math.max(0, toc.findIndex(c => c.position === hs.pos)) : 0; openReader(s, toc, i, hs ? hs.p : 0); };
-    $("#fv", body).onclick = () => {
-      fav = isFav ? fav.filter(f => f.id !== id) : [{ id, title: s.title, cover: s.cover, chapters: toc.length }, ...fav]; ls.set("fav", fav);
-      pushOp(isFav ? "DELETE" : "PUT", "/api/follow?story=" + id, isFav ? null : {}); draw();
-    };
-    $("#dlb", body).onclick = () => startDownload(s, toc, draw);
-    $("#mr", body).onclick = () => { desc = !desc; draw(); };
-    $("#so", body).onclick = () => { asc = !asc; draw(); };
-    if ($("#ser", body)) $("#ser", body).onclick = () => openList(s.series, "/api/stories?series=" + encodeURIComponent(s.series));
-    $$(".chip", body).forEach(b => b.onclick = () => openList(b.dataset.g, "/api/stories?genre=" + encodeURIComponent(b.dataset.g)));
+  $(".sp-t", el).textContent = s.title;
+  // ảnh nền phía sau: ưu tiên ảnh nền của truyện (như trên web), không có thì dùng bìa
+  const bgU = s.background || s.backdrop || s.banner || s.bg_image || s.background_url || s.cover;
+  const authors = s.authors || [], illus = s.illustrators || [], alts = s.alts || s.alt_titles || s.altTitles || s.other_names;
+  const altTxt = Array.isArray(alts) ? alts.join(", ") : (alts || "");
+  const rows = [illus.length ? `Họa sĩ: ${esc(illus.join(", "))}` : "", altTxt ? `Tên khác: ${esc(altTxt)}` : "", s.series ? `Series: <a id="ser">${esc(s.series)}</a>` : "", s.status ? `Tình trạng: ${esc(s.status)}` : "", `Số chương: ${toc.length}`].filter(Boolean);
+  body.innerHTML = `<div class="sp-bg"><img src="${esc(img(bgU, 900))}" alt=""></div>
+    <div class="sp-hero"><img class="sp-cv" src="${esc(img(s.cover, 500))}" alt=""><h1>${esc(s.title)}</h1>
+      ${authors.length ? `<div class="pills"><span class="pill">${ICON.user}${esc(authors.join(", "))}</span></div>` : ""}
+      ${(s.genres || []).length ? `<div class="chips sp-tags">${(s.genres || []).map(g => `<button class="chip" data-g="${esc(g)}">${esc(g)}</button>`).join("")}</div>` : ""}</div>
+    <div class="spc"><h3>Thông tin</h3><div class="inf">${rows.join("<br>")}</div></div>
+    ${s.description ? `<div class="spc"><h3>Giới thiệu</h3><div class="desc cl" id="ds">${esc(s.description)}</div><button class="more" id="mr">Xem thêm</button></div>` : ""}
+    <div class="spc"><div class="chh"><h3>Mục lục (${toc.length} chương)</h3><button id="so" aria-label="Đảo thứ tự">${ICON.sort}</button></div>
+      <div class="chs"><input id="chq" type="search" placeholder="Tìm kiếm ${toc.length} chương"></div><div id="chl"></div></div>`;
+  el.insertAdjacentHTML("beforeend", `<div class="fabs"><button id="fv"></button><button id="dlb"></button><button id="read" class="big" aria-label="Đọc">${ICON.play}</button></div>`);
+  const drawList = () => {
+    const hs = hist[id], d = dl[id], have = new Set(d ? d.have : []), k = norm(q);
+    let list = asc ? toc : [...toc].reverse(); if (k) list = list.filter(c => norm(c.title).includes(k));
+    $("#chl", body).innerHTML = list.length ? list.map(c => `<div class="ch ${hs && hs.pos === c.position ? "cur" : ""}" data-pos="${c.position}"><span>${esc(c.title)}</span>${have.has(c.position) ? "<i>✓</i>" : ""}</div>`).join("") : `<p class="empty">Không có chương phù hợp</p>`;
     $$(".ch", body).forEach(c => c.onclick = () => { const i = toc.findIndex(x => x.position === +c.dataset.pos); openReader(s, toc, i, 0); });
   };
-  el.onclose = () => { if (dlRedraw[id] === draw) delete dlRedraw[id]; if (tab === "lib") renderLib(); };
-  dlRedraw[id] = draw;
-  draw();
+  const refresh = () => {                  // cập nhật nút nổi + danh sách chương (khi theo dõi / tải xuống / đọc xong)
+    const d = dl[id], isFav = fav.some(f => f.id === id), job = jobs[id];
+    $("#fv", el).innerHTML = isFav ? ICON.bookmarkOn : ICON.bookmark; $("#fv", el).setAttribute("aria-label", isFav ? "Bỏ theo dõi" : "Theo dõi"); $("#fv", el).classList.toggle("on", isFav);
+    $("#dlb", el).innerHTML = job ? `<span class="fp">${job.native ? job.done + "/" + job.total : (d ? d.have.length : 0) + "/" + toc.length}</span>` : d && d.have.length >= toc.length ? ICON.check : ICON.download;
+    $("#dlb", el).classList.toggle("on", !!job || !!(d && d.have.length >= toc.length));
+    drawList();
+  };
+  $("#read", el).onclick = () => { const hs = hist[id], i = hs ? Math.max(0, toc.findIndex(c => c.position === hs.pos)) : 0; openReader(s, toc, i, hs ? hs.p : 0); };
+  $("#fv", el).onclick = () => {
+    const isFav = fav.some(f => f.id === id);
+    fav = isFav ? fav.filter(f => f.id !== id) : [{ id, title: s.title, cover: s.cover, chapters: toc.length }, ...fav]; ls.set("fav", fav);
+    pushOp(isFav ? "DELETE" : "PUT", "/api/follow?story=" + id, isFav ? null : {}); refresh(); toast(isFav ? "Đã bỏ theo dõi" : "Đã thêm vào kệ sách");
+  };
+  $("#dlb", el).onclick = () => startDownload(s, toc, refresh);
+  if ($("#mr", body)) $("#mr", body).onclick = () => { descCl = !descCl; $("#ds", body).classList.toggle("cl", descCl); $("#mr", body).textContent = descCl ? "Xem thêm" : "Thu gọn"; };
+  $("#so", body).onclick = () => { asc = !asc; drawList(); };
+  $("#chq", body).oninput = e => { q = e.target.value; drawList(); };
+  if ($("#ser", body)) $("#ser", body).onclick = () => openList(s.series, "/api/stories?series=" + encodeURIComponent(s.series));
+  $$(".chip[data-g]", body).forEach(b => b.onclick = () => openList(b.dataset.g, "/api/stories?genre=" + encodeURIComponent(b.dataset.g)));
+  $("#spm", el).onclick = () => {
+    const sh = openSheet(`<h3>${esc(s.title)}</h3><div class="menu">${s.series ? `<button id="m-ser">Cùng series</button>` : ""}<button id="m-cp">Sao chép tên truyện</button></div>`);
+    if ($("#m-ser", sh)) $("#m-ser", sh).onclick = () => { closeSheet(); openList(s.series, "/api/stories?series=" + encodeURIComponent(s.series)); };
+    $("#m-cp", sh).onclick = () => { closeSheet(); copyText(s.title); toast("Đã sao chép"); };
+  };
+  body.addEventListener("scroll", () => el.classList.toggle("scr", body.scrollTop > 250), { passive: true });
+  el.onclose = () => { if (dlRedraw[id] === refresh) delete dlRedraw[id]; if (tab === "lib") renderLib(); };
+  dlRedraw[id] = refresh;
+  refresh();
 }
 // Tải offline: toàn bộ chữ + ảnh (ảnh lưu vào bộ nhớ máy)
 async function startDownload(s, toc, redraw) {
@@ -917,38 +944,44 @@ function openReader(story, toc, startIdx, startP) {
     <div class="rsearch" hidden><input type="search" placeholder="Tìm trong chương" enterkeyhint="search"><span class="scnt"></span><button class="sp" aria-label="Trước">▲</button><button class="sn" aria-label="Sau">▼</button><button class="sx" aria-label="Đóng">✕</button></div>
     <div class="rscroll"></div><div class="pgnum" hidden><span class="pgl"></span><span class="pgr"></span></div><div class="rhead"></div>
     <div class="rdim"></div><div class="rwarm"></div>
-    <div class="tts" hidden>
-      <div class="grab" aria-label="Kéo xuống để thu gọn"></div>
-      <div class="tr tmain"><button id="tpc" aria-label="Chương trước">${ICON.skipPrev}</button><button id="tp" aria-label="Câu trước">${ICON.rew}</button><button id="tpl" class="pl" aria-label="Phát/Dừng">${ICON.play}</button><button id="tn" aria-label="Câu sau">${ICON.fwd}</button><button id="tnc" aria-label="Chương sau">${ICON.skipNext}</button></div>
-      <div class="tr topt">
-        <label class="tsel" aria-label="Hẹn giờ tắt">${ICON.timer}<span id="tsl">Hẹn giờ</span><select id="ts"><option value="0">Tắt hẹn giờ</option><option value="15">15 phút</option><option value="30">30 phút</option><option value="60">60 phút</option><option value="90">90 phút</option><option value="c1">Hết chương này</option><option value="c2">Sau 2 chương</option><option value="c3">Sau 3 chương</option></select></label>
-        <button id="tspd" class="spd" aria-label="Tốc độ">1,00x</button>
-        <button id="tx" aria-label="Tắt sách nói">${ICON.power}</button>
-        <button id="tvc" aria-label="Giọng đọc">${ICON.voice}</button>
-        <button id="tset" aria-label="Cài đặt đọc">${ICON.gear}</button>
+    <div class="ply" hidden>
+      <div class="ply-top"><button id="tdn" aria-label="Thu nhỏ">${ICON.chevDown}</button><button id="tx" aria-label="Dừng nghe">${ICON.close}</button></div>
+      <div class="ply-body">
+        <div class="ply-cv"><img id="tcv" alt=""></div>
+        <div class="ply-meta"><b id="ptt"></b><small id="pau"></small></div>
+        <div class="ply-seek"><input id="tsk" type="range" min="0" max="1000" value="0" aria-label="Vị trí nghe"></div>
+        <div class="ply-info"><small id="tch"></small><small id="tcnt"></small></div>
+        <div class="ply-info"><small id="tst"></small><small id="tpg"></small></div>
+        <div class="ply-ctl"><button id="tp" aria-label="Câu trước">${ICON.rew}</button><button id="tpc" aria-label="Chương trước">${ICON.skipPrev}</button><button id="tpl" class="pl" aria-label="Phát/Dừng">${ICON.play}</button><button id="tnc" aria-label="Chương sau">${ICON.skipNext}</button><button id="tn" aria-label="Câu sau">${ICON.fwd}</button></div>
       </div>
-      <div class="tts-more" hidden>
-        <div class="tr tr3"><small>Tốc độ</small><button id="trm" aria-label="Giảm 0,01">−</button><input id="tr" type="range" min="0.1" max="2" step="0.01"><button id="trp" aria-label="Tăng 0,01">+</button><b id="trv"></b></div>
-        <div class="tr tr2"><select id="tv"></select></div>
-        <div class="tr tr4"><button id="tmus" class="btn">♪ Nhạc nền</button><button id="trule" class="btn">Phát âm / bỏ qua</button></div>
-        ${native ? `<div class="tr tr4"><button id="ttsdev" class="btn">Giọng nói của máy</button></div>` : ""}
+      <div class="ply-more" hidden>
+        <div class="m-spd"><div class="tr tr3"><small>Tốc độ</small><button id="trm" aria-label="Giảm 0,01">−</button><input id="tr" type="range" min="0.1" max="2" step="0.01"><button id="trp" aria-label="Tăng 0,01">+</button><b id="trv"></b></div></div>
+        <div class="m-set"><div class="tr tr2"><select id="tv"></select></div>
+          <div class="tr tr4"><button id="trule" class="btn">Phát âm / bỏ qua</button>${native ? `<button id="ttsdev" class="btn">Giọng nói của máy</button>` : ""}</div></div>
+      </div>
+      <div class="ply-bar">
+        <button id="ptoc" class="pbi" aria-label="Mục lục">${ICON.list}<span>Mục lục</span></button>
+        <label class="pbi tsel" aria-label="Hẹn giờ tắt">${ICON.timer}<span id="tsl">Hẹn giờ</span><select id="ts"><option value="0">Tắt hẹn giờ</option><option value="15">15 phút</option><option value="30">30 phút</option><option value="60">60 phút</option><option value="90">90 phút</option><option value="c1">Hết chương này</option><option value="c2">Sau 2 chương</option><option value="c3">Sau 3 chương</option></select></label>
+        <button id="tspd" class="pbi" aria-label="Tốc độ"><b id="tspv">1,00x</b><span>Tốc độ</span></button>
+        <button id="tmus" class="pbi" aria-label="Nhạc nền">${ICON.music}<span>Nhạc nền</span></button>
+        <button id="tset" class="pbi" aria-label="Cài đặt nghe">${ICON.gear}<span>Cài đặt</span></button>
       </div>
     </div>
-    <div class="tinfo"><small id="tcnt"></small><small id="tst"></small><small id="tpg"></small></div>
+    <div class="tbub"><button class="bcv" id="bcv" aria-label="Mở trình phát"><img id="bimg" alt=""></button><div class="bctl"><button id="bpp" aria-label="Phát/Dừng"></button><button id="bnx" aria-label="Câu sau">${ICON.fwd}</button><button id="bcl" aria-label="Dừng nghe">${ICON.close}</button></div></div>
     <div class="rbot">
       <div class="rinfo"><span id="rpct">0,0%</span><span id="rpch"></span></div>
       <div class="rsl"><button id="bp">Trước</button><input id="rsl" type="range" min="0" max="1" step="1" value="0"><button id="bn">Tiếp</button></div>
       <div class="rbtns"><button id="bt" aria-label="Mục lục">${ICON.list}</button><button id="bm" aria-label="Chế độ đọc"></button><button id="bh" aria-label="Nghe">${ICON.phones}</button><button id="ba" aria-label="Cài đặt đọc">${ICON.gear}</button></div>
     </div>
   </div>`));
-  const scroll = $(".rscroll", el), ttsEl = $(".tts", el), pgnum = $(".pgnum", el), pgl = $(".pgl", el), pgr = $(".pgr", el), rhead = $(".rhead", el);
+  const scroll = $(".rscroll", el), ttsEl = $(".ply", el), pgnum = $(".pgnum", el), pgl = $(".pgl", el), pgr = $(".pgr", el), rhead = $(".rhead", el);
   let text = null, hclip = null, hcols = null, W = 300, H = 400, page = 0, pages = 1, curCh = null;
   let idx = startIdx, tok = 0, saveT, lastAct = Date.now(), swipedAt = 0, anim = 0;
   const curTitle = () => toc[idx] ? toc[idx].title : "";
   const sl = $("#rsl", el), rpct = $("#rpct", el), rpch = $("#rpch", el), rbot = $(".rbot", el);
   let sliding = false;
   const fmtPct = v => v.toFixed(1).replace(".", ",") + "%";
-  const setRbh = () => { el.style.setProperty("--rbh", (rbot.offsetHeight || 120) + "px"); el.style.setProperty("--ih", ($(".tinfo", el).offsetHeight || 28) + "px"); };
+  const setRbh = () => { el.style.setProperty("--rbh", (rbot.offsetHeight || 120) + "px"); };
   const applyRead = () => {            // độ sáng + màu chữ riêng của trang đọc
     $(".rdim", el).style.opacity = cfg.dim || 0;
     const hr = new Date().getHours(), warmOn = cfg.warm > 0 && (!cfg.warmAuto || hr >= 19 || hr < 6);
@@ -965,7 +998,7 @@ function openReader(story, toc, startIdx, startP) {
     const pct = fmtPct(Math.min(100, (idx + chapFrac()) / Math.max(1, toc.length) * 100));
     rpct.textContent = pct;
     if (!sliding) { rpch.textContent = curTitle(); sl.value = idx; }
-    $("#tpg", el).textContent = `${idx + 1}/${toc.length}  ${pct}`;
+    $("#tpg", el).textContent = `${idx + 1}/${toc.length}  ${pct}`; $("#tch", el).textContent = curTitle();
   }
   const isPage = () => cfg.mode === "page";
   const rIcon = () => isPage() ? ICON.pageH : ICON.scrollV;
@@ -1305,50 +1338,22 @@ function openReader(story, toc, startIdx, startP) {
     $("#rtapp", s).onclick = () => setRT("app");
   };
 
-  // ---- kéo bảng nghe xuống/lên (kiểu vBook): kéo xuống để vừa nghe vừa đọc, kéo lên hoặc chạm thanh dưới để mở lại ----
-  (() => {
-    const tinfo = $(".tinfo", el); let d = null, moved = 0;
-    const hiddenOff = () => el.classList.contains("hide") ? (parseFloat(el.style.getPropertyValue("--rbh")) || 0) : 0;
-    const minOff = () => ttsEl.offsetHeight + (parseFloat(el.style.getPropertyValue("--ih")) || 28) + 4;
-    const setMin = v => {
-      cfg.ttsMin = v; saveCfg();
-      ttsEl.style.transition = ""; ttsEl.classList.toggle("min", v); ttsEl.style.transform = "";
-    };
-    const start = e => {
-      if (ttsEl.hidden || e.touches.length !== 1 || e.target.closest("input,select,.tsel,.tts-more")) { d = null; return; }
-      const t = e.touches[0], isMin = ttsEl.classList.contains("min");
-      d = { y: t.clientY, t0: Date.now(), min: isMin, lo: hiddenOff(), hi: hiddenOff() + minOff(), on: false };
-      d.base = isMin ? d.hi : d.lo;
-    };
-    const move = e => {
-      if (!d) return; const dy = e.touches[0].clientY - d.y;
-      if (!d.on) { if (Math.abs(dy) < 8) return; d.on = true; ttsEl.style.transition = "none"; }
-      e.preventDefault(); moved = Date.now();
-      ttsEl.style.transform = `translateY(${Math.min(d.hi, Math.max(d.lo, d.base + dy))}px)`;
-    };
-    const end = e => {
-      const x = d; d = null; if (!x) return;
-      if (!x.on) { if (e.currentTarget === tinfo && e.type === "touchend") { moved = Date.now(); setMin(!x.min); } return; }
-      const dy = e.changedTouches[0].clientY - x.y, fast = Math.abs(dy) / Math.max(1, Date.now() - x.t0) > 0.5;
-      const pos = Math.min(x.hi, Math.max(x.lo, x.base + dy));
-      setMin(fast ? dy > 0 : pos > (x.lo + x.hi) / 2);
-    };
-    [ttsEl, tinfo].forEach(n => {
-      n.addEventListener("touchstart", start, { passive: true });
-      n.addEventListener("touchmove", move, { passive: false });
-      n.addEventListener("touchend", end); n.addEventListener("touchcancel", end);
-      n.addEventListener("click", ev => { if (Date.now() - moved < 350) { ev.stopPropagation(); ev.preventDefault(); } }, true);
-    });
-    $(".grab", el).addEventListener("click", () => setMin(true));
-  })();
-
   // ---- Sách nói ----
   const web = !native && "speechSynthesis" in window ? window.speechSynthesis : null;
   const tts = (() => {
     const pl = $("#tpl", el), vs = $("#tv", el), rs = $("#tr", el), ss = $("#ts", el), st = $("#tst", el);
     let chunks = [], pos = 0, gen = 0, sleepT = null, sleepCh = 0, hl = -2, webVoices = [], since = 0, flushT = null;
     const wrapped = new Map();
-    const cnt = () => { $("#tcnt", el).textContent = chunks.length ? `${pos + 1}/${chunks.length}` : ""; };
+    let seeking = false, moved = 0;
+    const tsk = $("#tsk", el);
+    const cnt = () => {
+      $("#tcnt", el).textContent = chunks.length ? `${pos + 1}/${chunks.length}` : "";
+      if (!seeking) tsk.value = chunks.length > 1 ? Math.round(pos / (chunks.length - 1) * 1000) : 0;
+    };
+    tsk.addEventListener("input", () => { seeking = true; if (chunks.length > 1) $("#tcnt", el).textContent = `${Math.round(tsk.value / 1000 * (chunks.length - 1)) + 1}/${chunks.length}`; });
+    tsk.addEventListener("change", () => { seeking = false; if (chunks.length > 1) T.start(Math.round(tsk.value / 1000 * (chunks.length - 1))); else cnt(); });
+    $("#ptt", el).textContent = story.title; $("#pau", el).textContent = (story.authors || []).join(", ") || story.author || "";
+    $("#tcv", el).src = img(story.cover, 700); $("#bimg", el).src = img(story.cover, 200);
     const tlab = () => { $("#tsl", el).textContent = ss.value === "0" ? "Hẹn giờ" : ss.value[0] === "c" ? ss.selectedOptions[0].text.replace("Sau ", "") : ss.value + " phút"; };
     const T = { playing: false };
     const flush = () => { // cộng thời gian NGHE (tính theo đồng hồ, không phụ thuộc timer nền)
@@ -1398,11 +1403,11 @@ function openReader(story, toc, startIdx, startP) {
       if (e) e.classList.add("tts-cur");
       else { e = chunks[i].p >= 0 && $(`p[data-p="${chunks[i].p}"]`, text); if (!e) return; e.classList.add("tts-on"); }
       if (isPage() && hclip) { const n = pageOf(e); if (n !== page) hGo(n); }
-      else { const r = e.getBoundingClientRect(), s = scroll.getBoundingClientRect(), pb = (ttsEl.hidden ? 0 : ttsEl.classList.contains("min") ? 0 : ttsEl.offsetHeight) + 80; if (r.top < s.top + 70 || r.bottom > s.bottom - pb) e.scrollIntoView({ block: "center", behavior: "smooth" }); }
+      else { const r = e.getBoundingClientRect(), s = scroll.getBoundingClientRect(), pb = 90; if (r.top < s.top + 70 || r.bottom > s.bottom - pb) e.scrollIntoView({ block: "center", behavior: "smooth" }); }
     };
     T.rewrap = () => { if (!chunks.length) return; wrap(); if (hl >= 0) hi(hl); };
     T.active = () => T.playing || !ttsEl.hidden;
-    T.ui = () => { pl.innerHTML = T.playing ? ICON.pause : ICON.play; $("#bh", el).style.color = ttsEl.hidden ? "" : "var(--accent)"; cnt(); updateMini(); };
+    T.ui = () => { pl.innerHTML = T.playing ? ICON.pause : ICON.play; $("#bpp", el).innerHTML = T.playing ? ICON.pause : ICON.play; $("#bh", el).style.color = ttsEl.hidden ? "" : "var(--accent)"; cnt(); updateMini(); };
     const nativeVoices = () => { try { return JSON.parse(native.getVoices()); } catch { return []; } };
     const fillVoices = list => {
       vs.innerHTML = `<option value="">${native ? "Giọng Google mặc định (chị Google)" : "Giọng mặc định"}</option>` + list.map(v => `<option value="${esc(v.name)}">${esc(v.label)}</option>`).join("");
@@ -1457,7 +1462,7 @@ function openReader(story, toc, startIdx, startP) {
     T.pause = () => { flush(); since = 0; T.playing = false; gen++; music.pause(); if (native) native.pause(); else if (web) web.cancel(); T.ui(); };
     T.halt = silent => { flush(); since = 0; T.playing = false; gen++; unwrap(); chunks = []; if (!silent) { music.pause(); if (native) native.pause(); else if (web) web.cancel(); } hi(-1); hl = -2; };
     T.stopAll = () => {
-      T.halt(true); if (native) native.stop(); else if (web) web.cancel(); clearTimeout(sleepT); sleepT = null; sleepCh = 0; music.pause(); clearInterval(flushT); ss.value = "0"; tlab(); ttsEl.hidden = true; $(".tts-more", el).hidden = true; T.ui();
+      T.halt(true); if (native) native.stop(); else if (web) web.cancel(); clearTimeout(sleepT); sleepT = null; sleepCh = 0; music.pause(); clearInterval(flushT); ss.value = "0"; tlab(); ttsEl.hidden = true; $(".ply-more", el).hidden = true; T.ui();
     };
     T.finished = async () => {
       hi(-1); hl = -2; flush();
@@ -1482,12 +1487,17 @@ function openReader(story, toc, startIdx, startP) {
     $("#tp", el).onclick = () => T.start(Math.max(0, pos - 1));
     $("#tnc", el).onclick = () => { if (idx < toc.length - 1) goTo(idx + 1, { play: true }); else toast("Hết truyện"); };
     $("#tpc", el).onclick = () => { if (idx > 0) goTo(idx - 1, { play: true }); else T.start(0); };
-    const more = $(".tts-more", el);
-    $("#tspd", el).onclick = $("#tvc", el).onclick = () => { more.hidden = !more.hidden; };
-    $("#tset", el).onclick = () => $("#ba", el).click();
+    const more = $(".ply-more", el);
+    const openMore = k => {
+      if (!more.hidden && more.dataset.k === k) { more.hidden = true; return; }
+      more.hidden = false; more.dataset.k = k; $(".m-spd", more).hidden = k !== "spd"; $(".m-set", more).hidden = k !== "set";
+    };
+    $("#tspd", el).onclick = () => openMore("spd");
+    $("#tset", el).onclick = () => openMore("set");
+    $("#ptoc", el).onclick = () => $("#bt", el).click();
     $("#tx", el).onclick = () => { T.stopAll(); if (bg === el) closeBg(); };
     const rv = $("#trv", el);
-    const setRate = v => { cfg.rate = clampRate(v); rs.value = String(cfg.rate); rv.textContent = fmtRate(cfg.rate); $("#tspd", el).textContent = cfg.rate.toFixed(2).replace(".", ",") + "x"; };
+    const setRate = v => { cfg.rate = clampRate(v); rs.value = String(cfg.rate); rv.textContent = fmtRate(cfg.rate); $("#tspv", el).textContent = cfg.rate.toFixed(2).replace(".", ",") + "x"; };
     setRate(cfg.rate);
     rs.oninput = () => setRate(rs.value);                                   // kéo: chỉ cập nhật số hiển thị
     rs.onchange = () => { saveCfg(); if (T.playing) T.start(pos); };        // thả tay: áp dụng ngay
@@ -1497,9 +1507,39 @@ function openReader(story, toc, startIdx, startP) {
     $("#trp", el).onclick = () => nudge(0.01);
     vs.onchange = () => { cfg.voice = vs.value; saveCfg(); if (native) native.setVoice(vs.value); if (T.playing) T.start(pos); };
     ss.onchange = () => { clearTimeout(sleepT); sleepCh = ss.value[0] === "c" ? +ss.value.slice(1) : 0; const m = +ss.value; tlab(); if (m > 0) sleepT = setTimeout(() => { T.pause(); st.textContent = "Đã hết giờ hẹn"; ss.value = "0"; tlab(); }, m * 60000); };
-    const showPanel = () => {
+    // ---- bong bóng thu nhỏ: kéo đi khắp màn hình, tự dính cạnh; chạm ảnh bìa để mở lại trình phát ----
+    const bub = $(".tbub", el); let bubT = 0;
+    if (cfg.bubY) bub.style.top = cfg.bubY + "px";
+    const dockSoon = () => { clearTimeout(bubT); bubT = setTimeout(() => bub.classList.add("dock"), 3500); };
+    const setMin = v => { ttsEl.classList.toggle("min", v); if (v) { bub.classList.remove("dock"); dockSoon(); } else clearTimeout(bubT); };
+    T.collapse = () => { if (ttsEl.hidden || ttsEl.classList.contains("min")) return false; setMin(true); return true; };
+    $("#tdn", el).onclick = () => setMin(true);
+    $("#bcv", el).onclick = () => { if (bub.classList.contains("dock")) { bub.classList.remove("dock"); dockSoon(); } else setMin(false); };
+    $("#bpp", el).onclick = () => { dockSoon(); T.toggle(); };
+    $("#bnx", el).onclick = () => { dockSoon(); $("#tn", el).click(); };
+    $("#bcl", el).onclick = () => $("#tx", el).click();
+    (() => {
+      let d = null;
+      bub.addEventListener("touchstart", e => { if (e.touches.length !== 1) return; const t = e.touches[0], r = bub.getBoundingClientRect(); d = { x: t.clientX, y: t.clientY, l: r.left, t: r.top, on: false }; }, { passive: true });
+      bub.addEventListener("touchmove", e => {
+        if (!d) return; const t = e.touches[0], dx = t.clientX - d.x, dy = t.clientY - d.y;
+        if (!d.on) { if (Math.hypot(dx, dy) < 8) return; d.on = true; bub.style.transition = "none"; bub.classList.remove("dock"); clearTimeout(bubT); }
+        e.preventDefault(); const pr = el.getBoundingClientRect();
+        bub.style.left = Math.max(0, Math.min(pr.width - bub.offsetWidth, d.l - pr.left + dx)) + "px"; bub.style.right = "auto";
+        bub.style.top = Math.max(70, Math.min(pr.height - 130, d.t - pr.top + dy)) + "px";
+      }, { passive: false });
+      const end = () => {
+        const x = d; d = null; if (!x || !x.on) return; moved = Date.now();
+        const pr = el.getBoundingClientRect(), r = bub.getBoundingClientRect(), left = r.left + r.width / 2 < pr.left + pr.width / 2, top = bub.style.top;
+        bub.style.transition = ""; bub.style.left = ""; bub.style.right = ""; bub.classList.toggle("l", left); bub.classList.toggle("r", !left); bub.style.top = top;
+        cfg.bubY = parseInt(top); saveCfg(); dockSoon();
+      };
+      bub.addEventListener("touchend", end); bub.addEventListener("touchcancel", end);
+      bub.addEventListener("click", ev => { if (Date.now() - moved < 350) { ev.stopPropagation(); ev.preventDefault(); } }, true);
+    })();
+    const showPanel = collapsed => {
       if (!native && !web) { toast("Máy không hỗ trợ đọc truyện"); return false; }
-      ttsEl.hidden = false; el.classList.remove("hide"); ttsEl.classList.toggle("min", !!cfg.ttsMin); setRbh();
+      ttsEl.hidden = false; setMin(!!collapsed);
       if (native) {
         native.requestNotificationPermission();
         if (!native.hasGoogleTts() && confirm("Máy chưa cài Google TTS (giọng chị Google).\nMở Google Play để cài?")) { native.installGoogleTts(); ttsEl.hidden = true; return false; }
@@ -1507,8 +1547,8 @@ function openReader(story, toc, startIdx, startP) {
       return true;
     };
     $("#bh", el).onclick = () => {
-      if (!ttsEl.hidden) { T.stopAll(); return; }
-      if (!showPanel()) return;
+      if (!ttsEl.hidden) { if (ttsEl.classList.contains("min")) setMin(false); else T.stopAll(); return; }
+      if (!showPanel(false)) return;
       T.start(T.visibleIdx());
     };
     T.ensure = () => { if (!text) return false; if (!chunks.length) { chunks = build(); wrap(); } return chunks.length > 0; };
@@ -1517,7 +1557,7 @@ function openReader(story, toc, startIdx, startP) {
       if (sp && text.contains(sp)) return +sp.dataset.c;
       const i = chunks.findIndex(c => c.p >= pIdx && c.p >= 0); return i < 0 ? 0 : i;
     };
-    T.startAt = i => { if (ttsEl.hidden && !showPanel()) return; T.start(i); };
+    T.startAt = i => { if (ttsEl.hidden && !showPanel(true)) return; T.start(i); };
     T.rebuild = () => {              // đổi quy tắc phát âm / bỏ qua đoạn
       if (!chunks.length) return; const cp = chunks[pos] ? chunks[pos].p : -1, was = T.playing;
       unwrap(); chunks = build(); wrap(); let ni = chunks.findIndex(c => c.p >= cp && c.p >= 0); if (ni < 0) ni = 0; pos = ni; cnt();
@@ -1556,7 +1596,7 @@ function openReader(story, toc, startIdx, startP) {
     addTime(story, 0, dt / 1000);
   }, 1000);
 
-  el._api = { title: () => story.title, ch: curTitle, playing: () => tts.playing, toggle: () => tts.toggle(), relayout: () => { setRbh(); relayout(true); } };
+  el._api = { title: () => story.title, ch: curTitle, playing: () => tts.playing, toggle: () => tts.toggle(), collapse: () => tts.collapse(), relayout: () => { setRbh(); relayout(true); } };
   el._leave = () => {
     if (tts.active()) { const i = stack.indexOf(el); if (i >= 0) stack.splice(i, 1); el.style.display = "none"; bg = el; updateMini(); applyBars(); }
     else pop();

@@ -1,4 +1,7 @@
 ## Có gì mới
+- **Trình phát nghe toàn màn hình:** bấm nút tai nghe để mở, có ảnh bìa lớn, tên truyện, tác giả, thanh tua theo câu, tên chương, nút câu trước / chương trước / phát-dừng / chương sau / câu sau, thanh dưới gồm Mục lục, Hẹn giờ, Tốc độ, Nhạc nền, Cài đặt (giọng đọc, phát âm, giọng nói của máy)
+- **Bong bóng thu nhỏ:** bấm mũi tên ở góc trái để thu nhỏ trình phát về bong bóng ảnh bìa kèm nút phát/dừng, câu sau, tắt. Kéo bong bóng đi đâu cũng được, thả ra tự dính cạnh màn hình và thu gọn lại, chạm ảnh bìa để mở lại. Nút Back của máy cũng thu nhỏ trình phát trước. Giữ lâu một đoạn rồi chọn Nghe từ đây sẽ nghe ngay ở dạng bong bóng để vừa nghe vừa đọc
+- **Trang chi tiết truyện làm mới:** bìa lớn ở giữa, tên truyện to rõ, nút tác giả, thẻ thể loại, các thẻ Thông tin, Giới thiệu, Mục lục có nền đặc nên chữ rõ nét. Ảnh nền mờ phía sau lấy từ ảnh nền của truyện (không có thì dùng bìa). Mục lục có ô tìm chương và nút đảo thứ tự; ba nút nổi ở góc phải: theo dõi, tải xuống, đọc. Cuộn xuống thì thanh trên hiện tên truyện
 - **Gộp Thể loại vào Khám phá:** bỏ tab Thể loại, thay bằng nút Lọc cạnh ô tìm kiếm. Bấm vào để chọn nhiều thể loại cùng lúc và chọn series (có ô tìm series). Bộ lọc đang dùng hiện thành các thẻ bên dưới, bấm ✕ để bỏ từng cái, nút Lọc hiện số bộ lọc đang bật
 - Trang Thống kê gọn hơn: bỏ khối Mục tiêu mỗi ngày (chuỗi ngày liên tiếp) và biểu đồ 7 ngày
 - **Thẻ truyện gọn đều:** bỏ số chương và % ở góc bìa, tên truyện nằm dưới bìa, tối đa 2 dòng, dài quá thì cắt bằng "…". Mọi thẻ cùng kích thước nên hàng nào cũng thẳng đều

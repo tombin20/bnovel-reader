@@ -58,6 +58,7 @@ public class MainActivity extends Activity {
     private File imgDir;
     private ValueCallback<Uri[]> fileCb;
     private static final int REQ_FILE = 7731;
+    private static final int REQ_AVATAR = 7732;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -72,6 +73,21 @@ public class MainActivity extends Activity {
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
             .addPathHandler("/imgcache/", new WebViewAssetLoader.InternalStoragePathHandler(this, imgDir))
+            // Ảnh đại diện: đọc thẳng từ file người dùng đã chọn (máy/Drive), không sao chép vào app. Đường dẫn: /avatar/<base64url của content://...>
+            .addPathHandler("/avatar/", new WebViewAssetLoader.PathHandler() {
+                @Override public WebResourceResponse handle(String path) {
+                    try {
+                        String raw = new String(android.util.Base64.decode(path, android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP | android.util.Base64.NO_PADDING), "UTF-8");
+                        Uri u = Uri.parse(raw);
+                        if (!"content".equals(u.getScheme())) return null;
+                        String mime = getContentResolver().getType(u);
+                        if (mime == null || !mime.startsWith("image/")) mime = "image/jpeg";
+                        java.io.InputStream in = getContentResolver().openInputStream(u);
+                        if (in == null) return null;
+                        return new WebResourceResponse(mime, null, in);
+                    } catch (Exception e) { return null; }
+                }
+            })
             .build();
 
         WebSettings s = web.getSettings();
@@ -151,6 +167,14 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == REQ_AVATAR) {
+            if (res == RESULT_OK && data != null && data.getData() != null) {
+                Uri u = data.getData();
+                try { getContentResolver().takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
+                js("window.__avatarPicked && window.__avatarPicked(" + org.json.JSONObject.quote(u.toString()) + ")");
+            }
+            return;
+        }
         if (req == REQ_FILE && fileCb != null) {
             Uri[] r = null;
             if (res == RESULT_OK && data != null) {
@@ -266,6 +290,25 @@ public class MainActivity extends Activity {
         }
 
         // Chia sẻ văn bản (dùng cho sao lưu dữ liệu: lưu vào Drive, Keep, Zalo...)
+        // Chọn ảnh đại diện từ máy hoặc Google Drive (bộ chọn tệp của Android). Chỉ lưu đường dẫn, không sao chép ảnh.
+        @JavascriptInterface
+        public void pickAvatar() {
+            runOnUiThread(() -> {
+                try {
+                    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    i.setType("image/*");
+                    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                    startActivityForResult(i, REQ_AVATAR);
+                } catch (Exception ignored) {}
+            });
+        }
+
+        @JavascriptInterface
+        public void releaseUri(final String uri) {
+            try { getContentResolver().releasePersistableUriPermission(Uri.parse(uri), Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
+        }
+
         @JavascriptInterface
         public void shareText(final String title, final String text) {
             runOnUiThread(() -> {

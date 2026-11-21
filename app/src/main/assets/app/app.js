@@ -524,10 +524,62 @@ function libSortL(l, keepOrder) {          // lọc theo ô tìm kiếm + sắp 
   else if (!keepOrder) r.sort((a, b) => tOf(b) - tOf(a));
   return r;
 }
+// ---------- Ảnh đại diện: ảnh nằm trong máy/Drive của người dùng, app chỉ nhớ đường dẫn + vị trí thu phóng ----------
+const avSrc = uri => window.AndroidApp && AndroidApp.pickAvatar && /^content:/.test(uri)
+  ? "/avatar/" + btoa(unescape(encodeURIComponent(uri))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") : uri;
+const avStyle = av => {
+  const wf = (av.z || 1) * Math.max(1, av.nw / av.nh), hf = (av.z || 1) * Math.max(1, av.nh / av.nw);
+  return `position:absolute;max-width:none;object-fit:fill;width:${wf * 100}%;height:${hf * 100}%;left:${50 + (av.ox || 0) * 100}%;top:${50 + (av.oy || 0) * 100}%;transform:translate(-50%,-50%)`;
+};
+const avLetter = () => { const u = acct && acct.user; return u && u.name ? esc(String(u.name).trim().charAt(0).toUpperCase()) : ICON.user; };
+function avInner(av) { return av && av.uri ? `<img class="avimg" src="${esc(avSrc(av.uri))}" style="${avStyle(av)}" alt="">` : avLetter(); }
+function avBind(box) {                       // ảnh lỗi (file bị xóa / mất quyền) thì quay về chữ cái
+  const i = $(".avimg", box); if (i) i.onerror = () => { box.innerHTML = avLetter(); box.dataset.broken = "1"; };
+}
 function renderAvatar() {
   const b = $("#avt"); if (!b) return;
-  const u = acct && acct.user, pic = u && (u.avatar || u.picture || u.avatar_url);
-  b.innerHTML = pic ? `<img src="${esc(pic)}" alt="">` : u && u.name ? esc(String(u.name).trim().charAt(0).toUpperCase()) : ICON.user;
+  b.innerHTML = avInner(cfg.avatar); avBind(b);
+}
+function openAvatarCrop(uri, prev) {
+  const S = Math.min(280, window.innerWidth - 80);
+  const ov = h(`<div class="avc"><div class="avc-box"><h3>Ảnh đại diện</h3><p class="muted">Kéo để di chuyển, chụm hai ngón hoặc kéo thanh trượt để thu phóng</p>
+    <div class="avc-stage" style="width:${S}px;height:${S}px"><img alt=""><div class="avc-ring"></div></div>
+    <input id="avz" type="range" min="100" max="500" value="100" aria-label="Thu phóng">
+    <div class="avc-btns"><button class="btn" id="avx">Hủy</button><button class="btn solid" id="avok">Đặt làm avatar</button></div></div></div>`);
+  document.body.append(ov);
+  const img = $(".avc-stage img", ov), stage = $(".avc-stage", ov), zr = $("#avz", ov);
+  let nw = 1, nh = 1, z = 1, ox = 0, oy = 0, loaded = false;
+  const clampV = () => { z = Math.min(5, Math.max(1, z)); const mx = (z * Math.max(1, nw / nh) - 1) / 2, my = (z * Math.max(1, nh / nw) - 1) / 2; ox = Math.min(mx, Math.max(-mx, ox)); oy = Math.min(my, Math.max(-my, oy)); };
+  const apply = () => { clampV(); img.style.cssText = avStyle({ nw, nh, z, ox, oy }); zr.value = Math.round(z * 100); };
+  const close = () => ov.remove();
+  img.onload = () => { nw = img.naturalWidth || 1; nh = img.naturalHeight || 1; if (prev && prev.uri === uri) { z = prev.z || 1; ox = prev.ox || 0; oy = prev.oy || 0; } loaded = true; apply(); };
+  img.onerror = () => { toast("Không mở được ảnh này"); close(); };
+  img.src = avSrc(uri);
+  zr.oninput = () => { z = zr.value / 100; apply(); };
+  const pts = new Map(); let d0 = 0;
+  stage.addEventListener("pointerdown", e => { stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); if (pts.size === 2) { const [p, q] = [...pts.values()]; d0 = Math.hypot(p[0] - q[0], p[1] - q[1]); } });
+  stage.addEventListener("pointermove", e => {
+    if (!pts.has(e.pointerId) || !loaded) return; const o = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pts.size === 1) { ox += (e.clientX - o[0]) / S; oy += (e.clientY - o[1]) / S; }
+    else if (pts.size === 2) { const [p, q] = [...pts.values()], d = Math.hypot(p[0] - q[0], p[1] - q[1]); if (d0) z *= d / d0; d0 = d; }
+    apply();
+  });
+  const up = e => { pts.delete(e.pointerId); d0 = 0; };
+  stage.addEventListener("pointerup", up); stage.addEventListener("pointercancel", up);
+  stage.addEventListener("wheel", e => { e.preventDefault(); z *= e.deltaY < 0 ? 1.08 : 1 / 1.08; apply(); }, { passive: false });
+  $("#avx", ov).onclick = close;
+  $("#avok", ov).onclick = () => {
+    if (!loaded) return;
+    if (cfg.avatar && cfg.avatar.uri !== uri && window.AndroidApp && AndroidApp.releaseUri) AndroidApp.releaseUri(cfg.avatar.uri);
+    cfg.avatar = { uri, nw, nh, z: +z.toFixed(3), ox: +ox.toFixed(4), oy: +oy.toFixed(4) }; saveCfg(); close(); renderAvatar();
+    if (tab === "set") renderSettings(); toast("Đã đặt ảnh đại diện");
+  };
+}
+window.__avatarPicked = uri => openAvatarCrop(uri, cfg.avatar);
+function pickAvatar() {
+  if (window.AndroidApp && AndroidApp.pickAvatar) return AndroidApp.pickAvatar();
+  const f = document.createElement("input"); f.type = "file"; f.accept = "image/*";
+  f.onchange = () => { if (f.files[0]) openAvatarCrop(URL.createObjectURL(f.files[0]), null); }; f.click();
 }
 function openLibMenu() {
   const opt = (k, n) => `<button data-sort="${k}">${libSort === k ? "✓ " : ""}${n}</button>`;
@@ -693,6 +745,9 @@ function renderSettings() {
       <div class="r"><button class="btn solid" id="syncnow">Đồng bộ ngay</button><button class="btn danger" id="unlink">Hủy liên kết</button></div>`
     : `<p class="muted">Trên web: vào <b>Tài khoản → Tạo mã liên kết</b>, rồi nhập mã 8 ký tự vào đây để đồng bộ.</p>
       <div class="r"><input id="lc" maxlength="9" autocapitalize="characters" placeholder="MÃ LIÊN KẾT" style="flex:1;text-transform:uppercase"><button class="btn solid" id="linkgo">Liên kết</button></div>`}
+    <h4>Ảnh đại diện</h4>
+    <div class="r avr"><div class="avprev" id="avprev"></div><div class="avbtns"><button class="btn solid" id="avpick">Chọn ảnh từ máy / Drive</button>${cfg.avatar ? `<button class="btn" id="avedit">Chỉnh vị trí</button><button class="btn" id="avdel">Xóa ảnh</button>` : ""}</div></div>
+    <p class="muted">Ảnh nằm yên trong máy hoặc Google Drive của bạn. App chỉ nhớ đường dẫn và vị trí thu phóng, không sao chép ảnh vào bộ nhớ của app hay lên máy chủ. Nếu bạn xóa hoặc di chuyển ảnh gốc thì avatar sẽ không hiện, khi đó hãy chọn lại.</p>
     <h4>Giao diện ứng dụng</h4><div class="themes">${swatches(cfg.theme)}</div>
     <h4>Hình nền ứng dụng</h4>
     <div class="r bgr"><div class="bgprev" id="bgprev" style="${cfg.bg && bgUrl ? `background-image:url('${bgUrl}')` : ""}">${cfg.bg ? "" : "Chưa có"}</div>
@@ -737,6 +792,10 @@ function renderSettings() {
       if (acct) syncStats();
     } catch { toast("File sao lưu không hợp lệ"); }
   };
+  { const pv = $("#avprev"); pv.innerHTML = avInner(cfg.avatar); avBind(pv); }
+  $("#avpick").onclick = pickAvatar;
+  if ($("#avedit")) $("#avedit").onclick = () => openAvatarCrop(cfg.avatar.uri, cfg.avatar);
+  if ($("#avdel")) $("#avdel").onclick = () => { if (window.AndroidApp && AndroidApp.releaseUri) AndroidApp.releaseUri(cfg.avatar.uri); delete cfg.avatar; saveCfg(); renderAvatar(); renderSettings(); };
   $("#bgpick").onclick = () => $("#bgf").click();
   $("#bgf").onchange = async e => {
     const f = e.target.files && e.target.files[0]; if (!f) return;

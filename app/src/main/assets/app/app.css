@@ -630,3 +630,19 @@ body.hasmini .sp .fabs{bottom:92px}
 .tbub.l.dock,.tbub:not(.r).dock{transform:translateX(-75%)}.tbub.r.dock{transform:translateX(75%)}
 .tbub.dock::before{content:"";position:absolute;inset:-14px}
 .tbub.l.dock,.tbub:not(.r).dock{left:0}.tbub.r.dock{right:0}
+
+/* ===== v2.21: ảnh đại diện tự chọn + thu phóng ===== */
+#avt{position:relative}
+#avt .avimg,.avprev .avimg{pointer-events:none;-webkit-user-drag:none}
+.avr{align-items:center;gap:14px}
+.avprev{position:relative;flex:none;width:72px;height:72px;border-radius:50%;overflow:hidden;background:var(--accsoft);color:var(--accent);display:grid;place-items:center;font-size:30px;font-weight:800;border:2px solid var(--line)}
+.avprev svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.avbtns{flex:1;display:flex;flex-direction:column;gap:8px}.avbtns .btn{width:100%}
+.avc{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:20px}
+.avc-box{width:min(100%,360px);background:var(--bg);color:var(--fg);border-radius:26px;padding:20px 20px 18px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.avc-box h3{margin:0 0 4px;font-size:20px}.avc-box .muted{margin:0 0 14px;font-size:13px;line-height:1.4}
+.avc-stage{position:relative;overflow:hidden;margin:0 auto;border-radius:18px;background:#000;touch-action:none;cursor:grab}
+.avc-stage img{-webkit-user-drag:none;user-select:none}
+.avc-ring{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.6);border:2px solid rgba(255,255,255,.85);pointer-events:none}
+.avc-box input[type=range]{width:100%;margin:16px 0 4px;accent-color:var(--accent)}
+.avc-btns{display:flex;gap:10px;margin-top:10px}.avc-btns .btn{flex:1}

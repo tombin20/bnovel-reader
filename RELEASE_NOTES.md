@@ -1,4 +1,5 @@
 ## Có gì mới
+- **Ảnh đại diện tự chọn:** vào Cài đặt, mục Ảnh đại diện, chọn ảnh từ máy hoặc Google Drive, kéo và thu phóng trong khung tròn trước khi đặt, có thể chỉnh lại hoặc xóa bất cứ lúc nào. Ảnh nằm yên trong máy/Drive của bạn, app chỉ nhớ đường dẫn và vị trí thu phóng, không sao chép ảnh vào bộ nhớ của app hay lên máy chủ
 - Chạm vào bong bóng nghe đang thu lại ở mép là bung ra đủ nút ngay, không cần kéo nữa (kéo cũng được)
 - Ảnh nền (banner) ở trang chi tiết truyện bớt nhòe: giảm độ mờ blur còn khoảng 20% so với trước nên nhìn rõ ảnh hơn
 - **Bong bóng nghe thu lại thông minh:** kéo sát mép màn hình là tự thu lại ngay (không cần chờ), khi thu lại mờ đi và chỉ lộ khoảng 1/4 hình tròn ở mép để vẫn đọc được chữ phía sau; chạm vào phần lộ ra để mở lại
@@ -50,6 +51,7 @@
 - **Tự báo bản cập nhật** mỗi khi bạn mở app
 
 ## Sửa lỗi
+- Sửa lỗi avatar ở thanh trên tủ sách bị hiện biểu tượng ảnh hỏng: không còn dùng đường dẫn avatar lỗi từ tài khoản; không có ảnh thì hiện chữ cái đầu của tên
 - Sửa lỗi lướt qua chương Minh họa bị nhảy về đầu: số trang không còn phụ thuộc lúc ảnh tải xong
 - Sửa lỗi khi đang nghe, thoát ra rồi bấm thanh đang nghe để vào lại thì thanh trạng thái và thanh điều hướng của máy bị sai màu (màu giao diện ứng dụng thay vì màu giao diện đọc), đồng thời dàn lại trang cho đúng
 - Sửa lỗi giật, lag khi mở bảng Cài đặt đọc và khi đổi giao diện, cỡ chữ: bỏ hiệu ứng làm mờ nền nặng đè lên trang chữ, thanh menu và bảng nghe dùng nền đặc nên mượt hơn

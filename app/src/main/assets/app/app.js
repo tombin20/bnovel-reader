@@ -37,6 +37,8 @@ const ICON = {
   filter: SV('<path d="M4 5.5h16l-6.2 7.3v5.4l-3.6 1.8v-7.2z"/>'),
   more: SV('<circle cx="12" cy="5" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="19" r="1.7" fill="currentColor"/>'),
   user: SV('<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-5.5 8-5.5s6.5 1.5 8 5.5"/>'),
+  plus: SV('<path d="M12 5v14M5 12h14"/>'),
+  trash: SV('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3"/>'),
   search: SV('<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>'),
   scrollV: SV('<path d="M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4"/>'),
   pageH: SV('<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>'),
@@ -100,6 +102,10 @@ function applyTheme() {
   r.style.setProperty("--size", cfg.size + "px");
   r.style.setProperty("--lh", cfg.lh);
   r.style.setProperty("--font", (FONTS[cfg.font] || FONTS.serif)[1]);
+  r.style.setProperty("--mx", (cfg.mx == null ? 18 : cfg.mx) + "px");
+  r.style.setProperty("--pg", (cfg.pg == null ? 0.5 : cfg.pg) + "em");
+  r.style.setProperty("--ta", cfg.just === false ? "left" : "justify");
+  r.style.setProperty("--ti", cfg.indent === false ? "0" : "2em");
   if (window.__bgApply) window.__bgApply();
   applyBars();
 }
@@ -477,6 +483,54 @@ function copyText(t) {
   fb();
 }
 
+// ---------- Sao lưu: gộp dữ liệu + tự ghi vào file người dùng chọn ----------
+function buildBackup() {
+  const c = Object.assign({}, cfg); ["bg", "avatar", "autoBk", "fonts", "rbg"].forEach(k => delete c[k]);
+  if (String(c.font).startsWith("cf_")) c.font = "serif";
+  return JSON.stringify({ app: "bnovel-reader", v: 1, t: Date.now(), cfg: c, fav, hist, stats, days, bm });
+}
+function importBackup(o) {
+  mergeStats(o.stats, o.days);
+  for (const x of Object.values(o.hist || {})) { const l = hist[x.id]; if (!l || x.t > l.t) hist[x.id] = x; }
+  const ids = new Set(fav.map(x => x.id)); for (const x of o.fav || []) if (!ids.has(x.id)) fav.push(x);
+  ls.set("hist", hist); ls.set("fav", fav);
+  for (const [sid, arr] of Object.entries(o.bm || {})) { const cur = bm[sid] || (bm[sid] = []); for (const b of arr) if (!cur.some(c => c.pos === b.pos && c.p === b.p)) cur.push(b); }
+  saveBm();
+  if (o.cfg) { const keep = { base: cfg.base, bg: cfg.bg, avatar: cfg.avatar, autoBk: cfg.autoBk, fonts: cfg.fonts, rbg: cfg.rbg }; Object.assign(cfg, o.cfg, keep); if (!FONTS[cfg.font]) cfg.font = "serif"; saveCfg(); applyTheme(); }
+  if (acct) syncStats();
+}
+const hasBk = () => !!(window.AndroidApp && AndroidApp.pickBackupFile && AndroidApp.writeText && AndroidApp.readText);
+let bkBusy = false, bkManual = false, bkReadCb = null;
+function bkWrite(manual) {
+  if (!hasBk() || !cfg.autoBk || bkBusy) return; bkBusy = true; bkManual = !!manual;
+  try { AndroidApp.writeText(cfg.autoBk.uri, buildBackup()); } catch { bkBusy = false; }
+}
+window.__backupWritten = (ok, msg) => {
+  bkBusy = false; if (ok && cfg.autoBk) { cfg.autoBk.t = Date.now(); saveCfg(); }
+  if (bkManual) { toast(ok ? "Đã sao lưu vào file" : "Sao lưu lỗi: " + msg); if (tab === "set") renderSettings(); }
+  bkManual = false;
+};
+function bkRead() {
+  return new Promise(res => { bkReadCb = res; AndroidApp.readText(cfg.autoBk.uri); setTimeout(() => { if (bkReadCb === res) { bkReadCb = null; res(null); } }, 15000); });
+}
+window.__backupRead = t => { const r = bkReadCb; bkReadCb = null; if (r) r(t); };
+async function bkRestore() {
+  const t = await bkRead(); if (!t) { toast("Không đọc được file sao lưu"); return false; }
+  let o; try { o = JSON.parse(t); if (o.app !== "bnovel-reader") throw 0; } catch { toast("File không phải bản sao lưu B-novel"); return false; }
+  importBackup(o); toast("Đã khôi phục dữ liệu"); return true;
+}
+window.__backupPicked = async (uri, mode) => {
+  cfg.autoBk = { uri, t: 0 }; saveCfg();
+  if (mode === "open") {
+    const t = await bkRead(); let o = null; try { o = JSON.parse(t); if (o.app !== "bnovel-reader") o = null; } catch {}
+    if (o) { if (confirm("Tìm thấy bản sao lưu trong file này.\nKhôi phục dữ liệu từ file?")) { importBackup(o); toast("Đã khôi phục dữ liệu"); } }
+    else if (t && t.trim() && !confirm("File này không phải bản sao lưu B-novel.\nGhi đè nội dung file bằng bản sao lưu?")) { cfg.autoBk = null; saveCfg(); if (tab === "set") renderSettings(); return; }
+  }
+  bkWrite(true); if (tab === "set") renderSettings(); if (tab === "lib") renderLib();
+};
+document.addEventListener("visibilitychange", () => { if (document.hidden && cfg.autoBk && Date.now() - (cfg.autoBk.t || 0) > 20000) bkWrite(false); });
+setInterval(() => { if (cfg.autoBk && !document.hidden && Date.now() - (cfg.autoBk.t || 0) > 15 * 60000) bkWrite(false); }, 60000);
+
 // ---------- Điều hướng ----------
 const app = $("#app"), view = $("#view");
 // ảnh bìa hiện mờ dần khi tải xong (load/error không nổi bọt nên bắt ở pha capture)
@@ -653,7 +707,7 @@ function renderLib() {
   const bodyHtml = () => {
     if (libTab === "shelf") {
       const l = libSortL(fav);
-      return l.length ? `<div class="grid">${grid(l)}</div>` : (libQ ? noMatch : `<p class="empty">Kệ sách còn trống.<br>Mở một truyện rồi bấm <b>♡ Theo dõi</b> để thêm vào đây.</p>`);
+      return l.length ? `<div class="grid">${grid(l)}</div>` : (libQ ? noMatch : `<p class="empty">Kệ sách còn trống.<br>Mở một truyện rồi bấm <b>♡ Theo dõi</b> để thêm vào đây.${hasBk() && !cfg.autoBk ? `<br><br><button class="btn" id="emprest">Cài lại app? Khôi phục từ file sao lưu</button>` : ""}</p>`);
     }
     const ids = new Set(fav.map(f => f.id)), l = libSortL(Object.values(hist).filter(x => !ids.has(x.id)));
     return l.length ? l.map(x => `<div class="li" data-resume="${x.id}"><img src="${esc(img(x.cover, 400))}" alt=""><div class="t"><b>${esc(x.title)}</b><small>${esc(x.ct || "")}</small></div><button class="x" data-fol="${x.id}" aria-label="Theo dõi">♡</button><button class="x" data-del="${x.id}" aria-label="Xóa">✕</button></div>`).join("")
@@ -672,6 +726,7 @@ function renderLib() {
     });
   };
   bindBody();
+  if ($("#emprest")) $("#emprest").onclick = () => AndroidApp.pickBackupFile(false);
   const q = $("#libq"); let qT;
   if (q) q.oninput = e => { libQ = e.target.value; clearTimeout(qT); qT = setTimeout(() => { $("#libbody").innerHTML = bodyHtml(); bindBody(); }, 120); };
 }
@@ -797,6 +852,10 @@ function renderSettings() {
     <div class="chips"><button class="chip ${cfg.bg.dim == null ? "on" : ""}" id="bgauto">Độ phủ tự động</button></div>` : ""}
     <p class="muted">Ảnh được tự cắt vừa màn hình, làm mờ và phủ màu giao diện để chữ và bìa truyện luôn rõ, dù chọn ảnh nào.</p>
     <h4>Dữ liệu</h4>
+    ${hasBk() ? `<div class="r"><label>Tự sao lưu vào file (Drive / máy)</label></div>
+    <p class="muted">${cfg.autoBk ? `Đang bật${cfg.autoBk.t ? ", ghi gần nhất " + new Date(cfg.autoBk.t).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : ""}. App tự ghi mỗi khi bạn thoát app.` : "Chọn một file một lần, app tự ghi thống kê, lịch sử, đánh dấu, cài đặt vào đó mỗi khi bạn thoát app. Cài lại app hay đổi máy chỉ cần chọn lại file này để khôi phục."}</p>
+    <div class="r"><button class="btn solid" id="abnew">Tạo file mới</button><button class="btn" id="abopen">Chọn file có sẵn</button></div>
+    ${cfg.autoBk ? `<div class="r"><button class="btn" id="abnow">Sao lưu ngay</button><button class="btn" id="abrest">Khôi phục từ file</button><button class="btn danger" id="aboff">Tắt</button></div>` : ""}` : ""}
     <div class="r"><button class="btn solid" id="bkexp">Sao lưu dữ liệu</button><button class="btn" id="bkimp">Khôi phục từ file</button></div>
     <input type="file" id="bkf" accept=".json,application/json,text/plain" hidden>
     <p class="muted">Sao lưu gồm thống kê thời gian, lịch sử, truyện theo dõi và cài đặt. Lưu vào Drive/Zalo/Keep để khôi phục khi cài lại app hoặc đổi máy.</p>
@@ -808,9 +867,15 @@ function renderSettings() {
     <h4>Ứng dụng</h4>
     <div class="r"><label>Phiên bản: <b>${esc(APP_VER || "web")}</b></label>${native ? `<button class="btn" id="chkupd">Kiểm tra cập nhật</button>` : ""}</div>
     <p class="empty">B-novel Reader</p></div>`;
+  if ($("#abnew")) {
+    $("#abnew").onclick = () => AndroidApp.pickBackupFile(true);
+    $("#abopen").onclick = () => AndroidApp.pickBackupFile(false);
+    if ($("#abnow")) $("#abnow").onclick = () => bkWrite(true);
+    if ($("#abrest")) $("#abrest").onclick = async () => { if (await bkRestore() && tab === "set") renderSettings(); };
+    if ($("#aboff")) $("#aboff").onclick = () => { try { AndroidApp.releaseUri(cfg.autoBk.uri); } catch {} cfg.autoBk = null; saveCfg(); renderSettings(); };
+  }
   $("#bkexp").onclick = () => {
-    const c = Object.assign({}, cfg); delete c.bg;
-    const txt = JSON.stringify({ app: "bnovel-reader", v: 1, t: Date.now(), cfg: c, fav, hist, stats, days, bm });
+    const txt = buildBackup();
     if (native && window.AndroidApp && AndroidApp.shareText) AndroidApp.shareText("Sao lưu B-novel Reader", txt);
     else { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "application/json" })); a.download = "bnovel-backup.json"; a.click(); }
     try { navigator.clipboard && navigator.clipboard.writeText(txt); } catch {}
@@ -818,18 +883,8 @@ function renderSettings() {
   $("#bkimp").onclick = () => $("#bkf").click();
   $("#bkf").onchange = async e => {
     const f = e.target.files && e.target.files[0]; if (!f) return;
-    try {
-      const o = JSON.parse(await f.text()); if (o.app !== "bnovel-reader") throw 0;
-      mergeStats(o.stats, o.days);
-      for (const x of Object.values(o.hist || {})) { const l = hist[x.id]; if (!l || x.t > l.t) hist[x.id] = x; }
-      const ids = new Set(fav.map(x => x.id)); for (const x of o.fav || []) if (!ids.has(x.id)) fav.push(x);
-      ls.set("hist", hist); ls.set("fav", fav);
-      for (const [sid, arr] of Object.entries(o.bm || {})) { const cur = bm[sid] || (bm[sid] = []); for (const b of arr) if (!cur.some(c => c.pos === b.pos && c.p === b.p)) cur.push(b); }
-      saveBm();
-      if (o.cfg) { const keep = { base: cfg.base, bg: cfg.bg }; Object.assign(cfg, o.cfg, keep); saveCfg(); applyTheme(); }
-      toast("Đã khôi phục dữ liệu"); renderSettings();
-      if (acct) syncStats();
-    } catch { toast("File sao lưu không hợp lệ"); }
+    try { const o = JSON.parse(await f.text()); if (o.app !== "bnovel-reader") throw 0; importBackup(o); toast("Đã khôi phục dữ liệu"); renderSettings(); }
+    catch { toast("File sao lưu không hợp lệ"); }
   };
   { const pv = $("#avprev"); pv.innerHTML = avInner(cfg.avatar); avBind(pv); }
   $("#avpick").onclick = pickAvatar;
@@ -1056,6 +1111,12 @@ function openReader(story, toc, startIdx, startP) {
       <div class="ply-more" hidden>
         <div class="m-spd"><div class="tr tr3"><small>Tốc độ</small><button id="trm" aria-label="Giảm 0,01">−</button><input id="tr" type="range" min="0.1" max="2" step="0.01"><button id="trp" aria-label="Tăng 0,01">+</button><b id="trv"></b></div></div>
         <div class="m-set"><div class="tr tr2"><select id="tv"></select></div>
+          <div class="tr"><label class="ck"><input type="checkbox" id="dgo"> Lời thoại đọc bằng giọng khác</label></div>
+          <div class="m-dg" hidden>
+            <div class="tr tr2"><select id="dgv"></select></div>
+            <div class="tr tr3"><small>Tốc độ</small><input id="dgr" type="range" min="60" max="160" step="5" value="100"><b id="dgrv"></b></div>
+            <div class="tr tr3"><small>Cao độ</small><input id="dgp" type="range" min="70" max="150" step="5" value="115"><b id="dgpv"></b></div>
+          </div>
           <div class="tr tr4"><button id="trule" class="btn">Phát âm / bỏ qua</button>${native ? `<button id="ttsdev" class="btn">Giọng nói của máy</button>` : ""}</div></div>
       </div>
       <div class="ply-bar">
@@ -1267,7 +1328,7 @@ function openReader(story, toc, startIdx, startP) {
     clearTimeout(saveT); saveT = setTimeout(() => saveHist(), 400);
   }
   function layoutH(p, atEnd) {
-    W = Math.max(200, Math.min(scroll.clientWidth - 32, 720)); H = Math.max(200, scroll.clientHeight - 72);
+    W = Math.max(200, Math.min(scroll.clientWidth - 2 * (cfg.mx == null ? 18 : cfg.mx), 720)); H = Math.max(200, scroll.clientHeight - 72);
     hclip.style.cssText = `width:${W}px;height:${H}px;margin:34px auto 0`;
     hcols.style.cssText = `height:${H}px;column-width:${W}px;column-gap:0;--hh:${H}px`;
     pages = Math.max(1, Math.round(hclip.scrollWidth / W));
@@ -1410,10 +1471,13 @@ function openReader(story, toc, startIdx, startP) {
       <div class="stp"><label>Chế độ</label><select id="md"><option value="scroll">Cuộn dọc</option><option value="page">Vuốt ngang</option></select></div>
       <div class="stp"><label>Cỡ chữ</label><button id="s1">−</button><b id="sv">${cfg.size}</b><button id="s2">+</button></div>
       <div class="stp"><label>Giãn dòng</label><button id="l1">−</button><b id="lv">${cfg.lh}</b><button id="l2">+</button></div>
+      <div class="stp"><label>Lề hai bên</label><input id="mxr" type="range" min="0" max="48" step="2" value="${cfg.mx == null ? 18 : cfg.mx}"><b id="mxv">${cfg.mx == null ? 18 : cfg.mx}</b></div>
+      <div class="stp"><label>Khoảng cách đoạn</label><input id="pgr" type="range" min="0" max="15" step="1" value="${Math.round((cfg.pg == null ? 0.5 : cfg.pg) * 10)}"><b id="pgv">${(cfg.pg == null ? 0.5 : cfg.pg).toFixed(1)}</b></div>
+      <div class="chips"><button class="chip ${cfg.just !== false ? "on" : ""}" id="jst">Căn đều hai bên</button><button class="chip ${cfg.indent !== false ? "on" : ""}" id="ind">Thụt đầu dòng</button></div>
       <div class="stp"><label>Font</label><select id="fn">${fontOpts()}</select></div>
       <div class="chips"><button class="chip" id="fup">＋ Tải font (.ttf)</button><button class="chip" id="fdel" ${String(cfg.font).startsWith("cf_") ? "" : "hidden"}>Xóa font này</button></div>
       <input type="file" id="ff" accept=".ttf,.otf,.woff,.woff2,font/*" hidden>
-      <div class="stp"><label>Ảnh nền đọc</label><button class="chip" id="rbp">Chọn ảnh</button><button class="chip" id="rbd" ${cfg.rbg ? "" : "hidden"}>Xóa ảnh</button></div>
+      <div class="stp"><label>Ảnh nền đọc</label><button class="chip ibtn" id="rbp" aria-label="Chọn ảnh">${ICON.plus}</button><button class="chip ibtn" id="rbd" aria-label="Xóa ảnh" ${cfg.rbg ? "" : "hidden"}>${ICON.trash}</button></div>
       <div class="stp"><label>Độ mờ ảnh (blur)</label><input id="rbb" type="range" min="0" max="30" step="1" value="${cfg.rbg ? cfg.rbg.blur : 6}" ${cfg.rbg ? "" : "disabled"}></div>
       <div class="stp"><label>Độ phủ nền</label><input id="rbo" type="range" min="0" max="90" step="5" value="${cfg.rbg ? cfg.rbg.dim : 35}" ${cfg.rbg ? "" : "disabled"}></div>
       <input type="file" id="rbf" accept="image/*" hidden>
@@ -1439,6 +1503,10 @@ function openReader(story, toc, startIdx, startP) {
     $("#s2", s).onclick = () => { cfg.size = Math.min(30, cfg.size + 1); upd(); };
     $("#l1", s).onclick = () => { cfg.lh = Math.max(1.4, +(cfg.lh - 0.1).toFixed(1)); upd(); };
     $("#l2", s).onclick = () => { cfg.lh = Math.min(2.4, +(cfg.lh + 0.1).toFixed(1)); upd(); };
+    $("#mxr", s).oninput = e => { cfg.mx = +e.target.value; $("#mxv", s).textContent = cfg.mx; upd(); };
+    $("#pgr", s).oninput = e => { cfg.pg = +e.target.value / 10; $("#pgv", s).textContent = cfg.pg.toFixed(1); upd(); };
+    $("#jst", s).onclick = e => { cfg.just = cfg.just === false; e.target.classList.toggle("on", cfg.just !== false); upd(); };
+    $("#ind", s).onclick = e => { cfg.indent = cfg.indent === false; e.target.classList.toggle("on", cfg.indent !== false); upd(); };
     $("#fn", s).onchange = e => { cfg.font = e.target.value; upd(); $("#fdel", s).hidden = !String(cfg.font).startsWith("cf_"); };
     $("#fup", s).onclick = () => $("#ff", s).click();
     $("#ff", s).onchange = async e => {
@@ -1473,7 +1541,7 @@ function openReader(story, toc, startIdx, startP) {
   // ---- Sách nói ----
   const web = !native && "speechSynthesis" in window ? window.speechSynthesis : null;
   const tts = (() => {
-    const pl = $("#tpl", el), vs = $("#tv", el), rs = $("#tr", el), ss = $("#ts", el), st = $("#tst", el);
+    const pl = $("#tpl", el), vs = $("#tv", el), dgv = $("#dgv", el), rs = $("#tr", el), ss = $("#ts", el), st = $("#tst", el);
     let chunks = [], pos = 0, gen = 0, sleepT = null, sleepCh = 0, hl = -2, webVoices = [], since = 0, flushT = null;
     const wrapped = new Map();
     let seeking = false, moved = 0;
@@ -1501,13 +1569,23 @@ function openReader(story, toc, startIdx, startP) {
       if (cur.trim()) out.push(cur.trim());
       return out;
     };
+    const qsegs = t => {                 // tách đoạn thành lời dẫn và lời thoại (trong ngoặc kép)
+      const out = []; let cur = "", q = false;
+      const push = () => { if (cur) { out.push({ t: cur, q }); cur = ""; } };
+      for (const ch of t) {
+        if (!q && (ch === "“" || ch === "«" || ch === "「" || ch === "『" || ch === '"')) { push(); q = true; cur = ch; }
+        else if (q && (ch === "”" || ch === "»" || ch === "」" || ch === "』" || ch === '"')) { cur += ch; push(); q = false; }
+        else cur += ch;
+      }
+      push(); return out;
+    };
     const build = () => {
       const sk = skipFn(), pr = pronFn();
       const l = []; const t = curTitle().trim(); if (t) l.push({ t, p: -1, s: pr(t) });
       $$("p[data-p]", text).forEach(p => {
         const raw = p.textContent.replace(/\s+/g, " ").trim();
         if (sk(raw)) return;
-        split(raw).forEach(x => { if (/[\p{L}\p{N}]/u.test(x)) l.push({ t: x, p: +p.dataset.p, s: pr(x) }); });
+        qsegs(raw).forEach(sg => split(sg.t).forEach(x => { if (/[\p{L}\p{N}]/u.test(x)) l.push({ t: x, p: +p.dataset.p, s: pr(x), q: sg.q }); }));
       });
       return l;
     };
@@ -1545,6 +1623,8 @@ function openReader(story, toc, startIdx, startP) {
       vs.innerHTML = `<option value="">${native ? "Giọng Google mặc định (chị Google)" : "Giọng mặc định"}</option>` + list.map(v => `<option value="${esc(v.name)}">${esc(v.label)}</option>`).join("");
       if (list.some(v => v.name === cfg.voice)) vs.value = cfg.voice;
       if (native) native.setVoice(vs.value);
+      dgv.innerHTML = `<option value="">Cùng giọng với lời dẫn</option>` + list.map(v => `<option value="${esc(v.name)}">${esc(v.label)}</option>`).join("");
+      dgv.value = cfg.dlg && list.some(v => v.name === cfg.dlg.voice) ? cfg.dlg.voice : "";
     };
     const loadWeb = () => {
       webVoices = web.getVoices().filter(v => /^vi/i.test(v.lang)).sort((a, b) => /google/i.test(b.name) - /google/i.test(a.name));
@@ -1552,14 +1632,19 @@ function openReader(story, toc, startIdx, startP) {
       if (!cfg.voice && webVoices[0]) vs.value = webVoices[0].name;
     };
     const engineStart = from => {
-      if (native) return native.speak(JSON.stringify(chunks.map(c => c.s || c.t)), from, cfg.rate, gen, story.title, curTitle(), imgFull(story.cover, 400));
+      const dg = cfg.dlg && cfg.dlg.on ? cfg.dlg : null;
+      if (native) {
+        const arr = JSON.stringify(chunks.map(c => c.s || c.t));
+        if (dg && native.speak2) return native.speak2(arr, JSON.stringify({ q: chunks.map(c => c.q ? 1 : 0), qr: dg.rate / 100, qp: dg.pitch / 100, qv: dg.voice || "" }), from, cfg.rate, gen, story.title, curTitle(), imgFull(story.cover, 400));
+        return native.speak(arr, from, cfg.rate, gen, story.title, curTitle(), imgFull(story.cover, 400));
+      }
       web.cancel(); const g = gen;
       const at = i => {
         if (g !== gen || !T.playing) return;
         if (i >= chunks.length) return T.finished();
         pos = i; hi(i); cnt(); flush();
-        const u = new SpeechSynthesisUtterance(chunks[i].s || chunks[i].t); u.lang = "vi-VN"; u.rate = cfg.rate;
-        const v = webVoices.find(x => x.name === vs.value); if (v) u.voice = v;
+        const u = new SpeechSynthesisUtterance(chunks[i].s || chunks[i].t); u.lang = "vi-VN"; const dq = dg && chunks[i].q; u.rate = cfg.rate * (dq ? dg.rate / 100 : 1); u.pitch = dq ? dg.pitch / 100 : 1;
+        const v = webVoices.find(x => x.name === (dq && dg.voice ? dg.voice : vs.value)); if (v) u.voice = v;
         u.onend = () => at(i + 1);
         u.onerror = ev => { if (ev.error === "canceled" || ev.error === "interrupted") return; if (g === gen) { T.halt(); T.ui(); st.textContent = "Lỗi đọc"; } };
         web.speak(u);
@@ -1619,6 +1704,20 @@ function openReader(story, toc, startIdx, startP) {
     $("#tp", el).onclick = () => T.start(Math.max(0, pos - 1));
     $("#tnc", el).onclick = () => { if (idx < toc.length - 1) goTo(idx + 1, { play: true }); else toast("Hết truyện"); };
     $("#tpc", el).onclick = () => { if (idx > 0) goTo(idx - 1, { play: true }); else T.start(0); };
+    // ---- lời thoại đọc bằng giọng khác ----
+    const dlg = () => cfg.dlg || (cfg.dlg = { on: false, voice: "", rate: 100, pitch: 115 });
+    let dgT = 0;
+    const dgSync = () => {
+      const d = dlg(); $("#dgo", el).checked = !!d.on; $(".m-dg", el).hidden = !d.on;
+      $("#dgr", el).value = d.rate; $("#dgp", el).value = d.pitch;
+      $("#dgrv", el).textContent = (d.rate / 100).toFixed(2) + "x"; $("#dgpv", el).textContent = (d.pitch / 100).toFixed(2);
+    };
+    const dgChanged = () => { saveCfg(); dgSync(); clearTimeout(dgT); if (T.playing) dgT = setTimeout(() => T.start(pos), 450); };
+    $("#dgo", el).onchange = e => { dlg().on = e.target.checked; dgChanged(); };
+    dgv.onchange = () => { dlg().voice = dgv.value; dgChanged(); };
+    $("#dgr", el).oninput = e => { dlg().rate = +e.target.value; dgChanged(); };
+    $("#dgp", el).oninput = e => { dlg().pitch = +e.target.value; dgChanged(); };
+    dgSync();
     const more = $(".ply-more", el);
     const openMore = k => {
       if (!more.hidden && more.dataset.k === k) { more.hidden = true; return; }

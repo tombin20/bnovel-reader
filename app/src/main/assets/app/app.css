@@ -644,3 +644,17 @@ body.hasmini .sp .fabs{bottom:92px}
 .rbgl::after{content:"";position:absolute;inset:0;background:var(--bg);opacity:var(--rdim,.35)}
 .stp input[disabled]{opacity:.4}
 .stp .chip{white-space:nowrap;flex:none}
+
+/* ===== v2.23: chỉnh lề / khoảng cách đoạn / căn đều + giọng lời thoại ===== */
+.rscroll:not(.hm){padding:0 var(--mx,18px)}
+.rtext p,.hcols p{margin:0 0 var(--pg,.5em);text-align:var(--ta,justify);text-indent:var(--ti,2em)}
+.stp b{min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
+.ck{display:flex;align-items:center;gap:8px;font-size:14px}
+.ply-more{max-height:46vh;overflow-y:auto}
+.ply .m-dg{display:flex;flex-direction:column;gap:8px}.ply .m-dg[hidden]{display:none}
+
+.ibtn{flex:none;width:44px;height:44px;padding:0;display:grid;place-items:center;border-radius:14px}
+.ibtn[hidden]{display:none}
+.ibtn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.stp .ibtn+.ibtn{margin-left:8px}
+.stp input[type=range]{flex:1 1 0;min-width:60px;width:auto}

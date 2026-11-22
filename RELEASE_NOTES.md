@@ -1,4 +1,7 @@
 ## Có gì mới
+- **Tự sao lưu vào file của bạn (Drive hoặc máy):** Cài đặt, mục Dữ liệu, tạo file mới hoặc chọn file có sẵn một lần. App tự ghi thống kê, lịch sử, truyện theo dõi, đánh dấu và cài đặt vào file mỗi khi bạn thoát app. Cài lại app hay đổi máy chỉ cần chọn lại file là khôi phục (kệ sách trống có sẵn nút khôi phục). Không lưu gì lên máy chủ hay vào bộ nhớ app
+- **Chỉnh bố cục chữ:** trong Cài đặt đọc có thanh chỉnh lề hai bên, khoảng cách giữa các đoạn, bật tắt căn đều hai bên và thụt đầu dòng
+- **Giọng khác cho lời thoại:** trong trình phát nghe, mục Cài đặt, bật Lời thoại đọc bằng giọng khác. App tự nhận đoạn trong dấu ngoặc kép (" ", “ ”, « », 「 」) rồi đọc bằng giọng, tốc độ và cao độ riêng, lời dẫn vẫn giữ giọng gốc
 - **Gọn lại danh sách font:** chỉ còn Noto Serif (mặc định) và Lora, thêm hai font mới Bokerlam và Bokerlam San (chữ nghiêng, có đủ dấu tiếng Việt). Đã bỏ các font còn lại để app nhẹ hơn
 - **Tải font của bạn lên (.ttf, .otf, .woff):** trong Cài đặt đọc, mục Font, bấm Tải font để thêm font tự chọn, có nút Xóa font này
 - **Ảnh nền riêng cho giao diện đọc:** chọn ảnh từ máy, phủ kín màn hình đọc, chỉnh độ mờ (blur) và độ phủ nền để chữ vẫn rõ. Chỉ áp dụng cho trang đọc, không ảnh hưởng phần còn lại của app
@@ -54,6 +57,7 @@
 - **Tự báo bản cập nhật** mỗi khi bạn mở app
 
 ## Sửa lỗi
+- Sửa lỗi chữ bị chồng, cắt ở nút chọn và xóa ảnh nền đọc: đổi thành biểu tượng dấu cộng và thùng rác cho gọn; sửa luôn nút Bắt đầu của Tự cuộn bị tràn khỏi màn hình
 - Sửa lỗi avatar ở thanh trên tủ sách bị hiện biểu tượng ảnh hỏng: không còn dùng đường dẫn avatar lỗi từ tài khoản; không có ảnh thì hiện chữ cái đầu của tên
 - Sửa lỗi lướt qua chương Minh họa bị nhảy về đầu: số trang không còn phụ thuộc lúc ảnh tải xong
 - Sửa lỗi khi đang nghe, thoát ra rồi bấm thanh đang nghe để vào lại thì thanh trạng thái và thanh điều hướng của máy bị sai màu (màu giao diện ứng dụng thay vì màu giao diện đọc), đồng thời dàn lại trang cho đúng

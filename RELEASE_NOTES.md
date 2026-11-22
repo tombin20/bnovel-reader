@@ -1,4 +1,7 @@
 ## Có gì mới
+- **Gọn lại danh sách font:** chỉ còn Noto Serif (mặc định) và Lora, thêm hai font mới Bokerlam và Bokerlam San (chữ nghiêng, có đủ dấu tiếng Việt). Đã bỏ các font còn lại để app nhẹ hơn
+- **Tải font của bạn lên (.ttf, .otf, .woff):** trong Cài đặt đọc, mục Font, bấm Tải font để thêm font tự chọn, có nút Xóa font này
+- **Ảnh nền riêng cho giao diện đọc:** chọn ảnh từ máy, phủ kín màn hình đọc, chỉnh độ mờ (blur) và độ phủ nền để chữ vẫn rõ. Chỉ áp dụng cho trang đọc, không ảnh hưởng phần còn lại của app
 - **Ảnh đại diện tự chọn:** vào Cài đặt, mục Ảnh đại diện, chọn ảnh từ máy hoặc Google Drive, kéo và thu phóng trong khung tròn trước khi đặt, có thể chỉnh lại hoặc xóa bất cứ lúc nào. Ảnh nằm yên trong máy/Drive của bạn, app chỉ nhớ đường dẫn và vị trí thu phóng, không sao chép ảnh vào bộ nhớ của app hay lên máy chủ
 - Chạm vào bong bóng nghe đang thu lại ở mép là bung ra đủ nút ngay, không cần kéo nữa (kéo cũng được)
 - Ảnh nền (banner) ở trang chi tiết truyện bớt nhòe: giảm độ mờ blur còn khoảng 20% so với trước nên nhìn rõ ảnh hơn

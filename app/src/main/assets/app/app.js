@@ -106,12 +106,8 @@ function applyTheme() {
 const FONTS = {
   serif: ["Noto Serif (mặc định)", "'Noto Serif',Georgia,'Times New Roman',serif"],
   lora: ["Lora - mềm mại, sang trọng", "'Lora','Noto Serif',Georgia,serif"],
-  crimson: ["Crimson Pro - gần giống Minion", "'Crimson Pro','Noto Serif',Georgia,serif"],
-  plex: ["IBM Plex Serif - hiện đại, rõ nét", "'IBM Plex Serif','Noto Serif',Georgia,serif"],
-  times: ["Liberation Serif - kiểu Times New Roman", "'Liberation Serif','Times New Roman','Noto Serif',serif"],
-  grand: ["NVN Grand Hotel - chữ viết tay", "'NVN Grand Hotel','Noto Serif',Georgia,serif"],
-  work: ["Work Sans - không chân, dễ đọc", "'Work Sans',system-ui,'Be Vietnam Pro',sans-serif"],
-  sans: ["Không chân (hệ thống)", "system-ui,'Be Vietnam Pro',sans-serif"],
+  bokerlam: ["Bokerlam - chữ nghiêng", "'Bokerlam','Noto Serif',Georgia,serif"],
+  bokerlamsan: ["Bokerlam San - nghiêng, không chân", "'Bokerlam San','Noto Serif',Georgia,serif"],
 };
 const fontOpts = () => Object.entries(FONTS).map(([k, f]) => `<option value="${k}">${f[0]}</option>`).join("");
 const BARS = { dark: ["#15171b", 0], black: ["#000000", 0], sepia: ["#f3ecdc", 1], light: ["#fbfbfc", 1], march7: ["#fdeaf3", 1] };
@@ -169,9 +165,9 @@ function bgAlpha() {
 }
 const loadBmp = async f => { try { return await createImageBitmap(f, { imageOrientation: "from-image" }); } catch { const u = URL.createObjectURL(f); try { const i = new Image(); i.src = u; await i.decode(); return i; } finally { setTimeout(() => URL.revokeObjectURL(u), 2000); } } };
 const toBlob = (cv, q) => new Promise(r => cv.toBlob(r, "image/jpeg", q));
-async function bgProcess(file) {
+async function bgProcess(file, W = 720) {
   const bmp = await loadBmp(file), bw = bmp.width, bh = bmp.height;
-  const W = 720, H = Math.round(W * clamp01(innerHeight / Math.max(1, innerWidth), 1.2, 2.4));
+  const H = Math.round(W * clamp01(innerHeight / Math.max(1, innerWidth), 1.2, 2.4));
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
   const c = cv.getContext("2d"), sc = Math.max(W / bw, H / bh);
   c.imageSmoothingQuality = "high";
@@ -220,6 +216,49 @@ async function bgSet(file) {
 async function bgClear() { cfg.bg = null; saveCfg(); bgSrc = null; bgSig = ""; try { await chDel(BG_KEY); } catch {} await applyBg(); }
 window.__bgApply = () => { applyBg().catch(() => {}); };
 (async () => { if (cfg.bg && cfg.bg.on) { try { bgSrc = await chGet(BG_KEY); } catch {} if (!bgSrc) { cfg.bg = null; saveCfg(); } applyBg().catch(() => {}); } })();
+
+// ---------- Font tự tải lên (.ttf/.otf/.woff) + ảnh nền riêng cho giao diện đọc ----------
+const cfFaces = {};
+async function cfRegister(f) {                 // f = {id,name}; trả về true nếu nạp được
+  let blob = null; try { blob = await chGet("font:" + f.id); } catch {}
+  if (!blob) return false;
+  try {
+    const ff = new FontFace("CF_" + f.id, await blob.arrayBuffer(), { weight: "400 700" });
+    await ff.load(); document.fonts.add(ff); cfFaces[f.id] = ff;
+    FONTS["cf_" + f.id] = [f.name + " (font của bạn)", `'CF_${f.id}','Noto Serif',Georgia,serif`];
+    return true;
+  } catch { return false; }
+}
+async function cfAdd(file) {
+  const id = Date.now().toString(36), name = (file.name || "Font").replace(/\.[^.]+$/, "").slice(0, 40) || "Font";
+  await chPut("font:" + id, file);
+  const f = { id, name };
+  if (!(await cfRegister(f))) { try { await chDel("font:" + id); } catch {} throw new Error("bad"); }
+  cfg.fonts = (cfg.fonts || []).concat(f); cfg.font = "cf_" + id; saveCfg(); applyTheme();
+  return "cf_" + id;
+}
+async function cfRemove(key) {
+  const id = key.slice(3); try { await chDel("font:" + id); } catch {}
+  if (cfFaces[id]) { try { document.fonts.delete(cfFaces[id]); } catch {} delete cfFaces[id]; }
+  delete FONTS[key]; cfg.fonts = (cfg.fonts || []).filter(f => f.id !== id);
+  if (cfg.font === key) cfg.font = "serif"; saveCfg(); applyTheme();
+}
+(async () => {
+  const list = cfg.fonts || []; let ch = false;
+  for (const f of list) if (!(await cfRegister(f))) ch = true;
+  if (ch) { cfg.fonts = list.filter(f => FONTS["cf_" + f.id]); saveCfg(); }
+  if (!FONTS[cfg.font]) cfg.font = "serif";
+  applyTheme();
+})();
+let rbgBlob = null, rbgUrl = "", rbgLoaded = false;
+async function rbgEnsure() { if (rbgLoaded) return; rbgLoaded = true; try { rbgBlob = await chGet("__rbg"); } catch {} if (rbgBlob) rbgUrl = URL.createObjectURL(rbgBlob); }
+async function rbgSet(file) {
+  const r = await bgProcess(file, 1080); await chPut("__rbg", r.blob);
+  if (rbgUrl) URL.revokeObjectURL(rbgUrl);
+  rbgBlob = r.blob; rbgUrl = URL.createObjectURL(r.blob); rbgLoaded = true;
+  const o = cfg.rbg || {}; cfg.rbg = { on: true, blur: o.blur != null ? o.blur : 6, dim: o.dim != null ? o.dim : 45 }; saveCfg();
+}
+async function rbgClear() { try { await chDel("__rbg"); } catch {} if (rbgUrl) URL.revokeObjectURL(rbgUrl); rbgBlob = null; rbgUrl = ""; rbgLoaded = true; cfg.rbg = null; saveCfg(); }
 
 // ---------- Nhạc nền khi nghe ----------
 const music = (() => {
@@ -999,6 +1038,7 @@ async function resume(id) {
 function openReader(story, toc, startIdx, startP) {
   if (bg) closeBg();
   const el = push(h(`<div class="rd hide" data-theme="${rKey()}">
+    <div class="rbgl" hidden><img alt=""></div>
     <div class="rtop bar"><button class="bk" aria-label="Quay lại">${ICON.back}</button><b class="rt"></b><button id="rsb" aria-label="Tìm trong chương">${ICON.search}</button></div>
     <div class="rsearch" hidden><input type="search" placeholder="Tìm trong chương" enterkeyhint="search"><span class="scnt"></span><button class="sp" aria-label="Trước">▲</button><button class="sn" aria-label="Sau">▼</button><button class="sx" aria-label="Đóng">✕</button></div>
     <div class="rscroll"></div><div class="pgnum" hidden><span class="pgl"></span><span class="pgr"></span></div><div class="rhead"></div>
@@ -1041,6 +1081,14 @@ function openReader(story, toc, startIdx, startP) {
   let sliding = false;
   const fmtPct = v => v.toFixed(1).replace(".", ",") + "%";
   const setRbh = () => { el.style.setProperty("--rbh", (rbot.offsetHeight || 120) + "px"); };
+  const applyRbg = async () => {            // ảnh nền riêng của giao diện đọc (full màn hình, chỉnh blur / độ phủ)
+    const l = $(".rbgl", el), b = cfg.rbg;
+    if (!b || !b.on) { l.hidden = true; return; }
+    await rbgEnsure(); if (!rbgUrl) { l.hidden = true; return; }
+    const im = $("img", l); if (im.getAttribute("src") !== rbgUrl) im.src = rbgUrl;
+    l.hidden = false; l.style.setProperty("--rblur", (b.blur || 0) + "px"); l.style.setProperty("--rdim", (b.dim == null ? 35 : b.dim) / 100);
+    im.style.transform = b.blur > 0 ? "scale(1.12)" : "none";
+  };
   const applyRead = () => {            // độ sáng + màu chữ riêng của trang đọc
     $(".rdim", el).style.opacity = cfg.dim || 0;
     const hr = new Date().getHours(), warmOn = cfg.warm > 0 && (!cfg.warmAuto || hr >= 19 || hr < 6);
@@ -1363,6 +1411,12 @@ function openReader(story, toc, startIdx, startP) {
       <div class="stp"><label>Cỡ chữ</label><button id="s1">−</button><b id="sv">${cfg.size}</b><button id="s2">+</button></div>
       <div class="stp"><label>Giãn dòng</label><button id="l1">−</button><b id="lv">${cfg.lh}</b><button id="l2">+</button></div>
       <div class="stp"><label>Font</label><select id="fn">${fontOpts()}</select></div>
+      <div class="chips"><button class="chip" id="fup">＋ Tải font (.ttf)</button><button class="chip" id="fdel" ${String(cfg.font).startsWith("cf_") ? "" : "hidden"}>Xóa font này</button></div>
+      <input type="file" id="ff" accept=".ttf,.otf,.woff,.woff2,font/*" hidden>
+      <div class="stp"><label>Ảnh nền đọc</label><button class="chip" id="rbp">Chọn ảnh</button><button class="chip" id="rbd" ${cfg.rbg ? "" : "hidden"}>Xóa ảnh</button></div>
+      <div class="stp"><label>Độ mờ ảnh (blur)</label><input id="rbb" type="range" min="0" max="30" step="1" value="${cfg.rbg ? cfg.rbg.blur : 6}" ${cfg.rbg ? "" : "disabled"}></div>
+      <div class="stp"><label>Độ phủ nền</label><input id="rbo" type="range" min="0" max="90" step="5" value="${cfg.rbg ? cfg.rbg.dim : 35}" ${cfg.rbg ? "" : "disabled"}></div>
+      <input type="file" id="rbf" accept="image/*" hidden>
       <div class="stp"><label>Lọc ánh sáng xanh</label><input id="wm" type="range" min="0" max="100" step="5" value="${cfg.warm || 0}"></div>
       <div class="chips"><button class="chip ${cfg.warmAuto ? "on" : ""}" id="wma">Tự bật 19h–6h</button><button class="chip ${cfg.awake !== false ? "on" : ""}" id="awk">Giữ màn hình sáng</button><button class="chip ${cfg.edge !== false ? "on" : ""}" id="edg">Chạm mép lật trang</button></div>
       <div class="stp"><label>Tải trước chương (Wi-Fi)</label><select id="rpf"><option value="0">Tắt</option><option value="2">2 chương</option><option value="5">5 chương</option><option value="10">10 chương</option></select></div>
@@ -1379,13 +1433,32 @@ function openReader(story, toc, startIdx, startP) {
     $("#bri", s).oninput = e => { cfg.dim = +(1 - e.target.value / 100).toFixed(2); applyRead(); };
     $("#bri", s).onchange = () => saveCfg();
     $$("[data-fg]", s).forEach(b => b.onclick = () => { cfg.rfg = b.dataset.fg; saveCfg(); applyRead(); $$("[data-fg]", s).forEach(x => x.classList.toggle("on", x === b)); });
-    $("#fn", s).value = cfg.font; $("#md", s).value = cfg.mode;
+    $("#fn", s).value = FONTS[cfg.font] ? cfg.font : "serif"; $("#md", s).value = cfg.mode;
     const upd = () => { saveCfg(); applyTheme(); $("#sv", s).textContent = cfg.size; $("#lv", s).textContent = cfg.lh; setTimeout(() => relayout(), 30); };
     $("#s1", s).onclick = () => { cfg.size = Math.max(14, cfg.size - 1); upd(); };
     $("#s2", s).onclick = () => { cfg.size = Math.min(30, cfg.size + 1); upd(); };
     $("#l1", s).onclick = () => { cfg.lh = Math.max(1.4, +(cfg.lh - 0.1).toFixed(1)); upd(); };
     $("#l2", s).onclick = () => { cfg.lh = Math.min(2.4, +(cfg.lh + 0.1).toFixed(1)); upd(); };
-    $("#fn", s).onchange = e => { cfg.font = e.target.value; upd(); };
+    $("#fn", s).onchange = e => { cfg.font = e.target.value; upd(); $("#fdel", s).hidden = !String(cfg.font).startsWith("cf_"); };
+    $("#fup", s).onclick = () => $("#ff", s).click();
+    $("#ff", s).onchange = async e => {
+      const f = e.target.files && e.target.files[0]; if (!f) return;
+      try { await cfAdd(f); $("#fn", s).innerHTML = fontOpts(); $("#fn", s).value = cfg.font; $("#fdel", s).hidden = false; toast("Đã thêm font"); }
+      catch { toast("File font không hợp lệ"); }
+    };
+    $("#fdel", s).onclick = async () => {
+      if (!String(cfg.font).startsWith("cf_") || !confirm("Xóa font này khỏi app?")) return;
+      await cfRemove(cfg.font); $("#fn", s).innerHTML = fontOpts(); $("#fn", s).value = cfg.font; $("#fdel", s).hidden = true;
+    };
+    $("#rbp", s).onclick = () => $("#rbf", s).click();
+    $("#rbf", s).onchange = async e => {
+      const f = e.target.files && e.target.files[0]; if (!f) return; toast("Đang xử lý ảnh...");
+      try { await rbgSet(f); await applyRbg(); $("#rbd", s).hidden = false; $("#rbb", s).disabled = $("#rbo", s).disabled = false; $("#rbb", s).value = cfg.rbg.blur; $("#rbo", s).value = cfg.rbg.dim; toast("Đã đặt ảnh nền đọc"); }
+      catch { toast("Không đọc được ảnh này"); }
+    };
+    $("#rbd", s).onclick = async () => { await rbgClear(); applyRbg(); $("#rbd", s).hidden = true; $("#rbb", s).disabled = $("#rbo", s).disabled = true; };
+    $("#rbb", s).oninput = e => { if (cfg.rbg) { cfg.rbg.blur = +e.target.value; applyRbg(); } }; $("#rbb", s).onchange = () => saveCfg();
+    $("#rbo", s).oninput = e => { if (cfg.rbg) { cfg.rbg.dim = +e.target.value; applyRbg(); } }; $("#rbo", s).onchange = () => saveCfg();
     $("#md", s).onchange = e => { lastP = currentP(); cfg.mode = e.target.value; saveCfg(); modeLabel(); if (curCh) paint(curCh, lastP); };
     sheetEl.dataset.theme = el.dataset.theme;
     const setRT = k => {
@@ -1678,7 +1751,7 @@ function openReader(story, toc, startIdx, startP) {
   const keepOn = () => { try { if (native && window.AndroidApp && AndroidApp.keepScreenOn) AndroidApp.keepScreenOn(cfg.awake !== false); } catch {} };
   keepOn(); const warmT = setInterval(() => { if (el.isConnected) applyRead(); }, 60000);
   const prevClose = el.onclose; el.onclose = () => { clearInterval(warmT); autoOn = false; cancelAnimationFrame(autoRaf); try { if (native && window.AndroidApp && AndroidApp.keepScreenOn) AndroidApp.keepScreenOn(false); } catch {} delete window.__ttsRules; if (prevClose) prevClose(); };
-  applyRead(); setRbh();
+  applyRead(); applyRbg(); setRbh();
   load(idx, startP).then(() => { if (!startP) toast(isPage() ? "Chạm mép trái/phải hoặc vuốt để lật trang · chạm giữa để mở menu" : "Chạm vào giữa màn hình để hiện/ẩn menu"); });
 }
 
